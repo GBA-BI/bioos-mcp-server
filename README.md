@@ -38,6 +38,7 @@ mcp install bioos_mcp_server.py
 ```
 
 3. Run in Cline
+Add the following to your Cline config:
 ```json
 {
   "mcpServers": {
@@ -56,6 +57,8 @@ mcp install bioos_mcp_server.py
   }
 } 
 ```
+Copy the content of bioos-mcp-prompt.md to your Cline Custom Instructions.
+
 
 ## API Reference
 
