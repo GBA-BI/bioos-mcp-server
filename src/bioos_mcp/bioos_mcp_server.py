@@ -232,9 +232,14 @@ async def import_workflow(config: WorkflowImportConfig) -> str:
         config.workflow_desc
     ]
 
-    # 使用 COMMAND_TIMEOUT=None，允许命令运行任意长的时间
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return result.stdout
+    # 同时返回 stderr 和 stdout 的内容
+    output = []
+    if result.stdout:
+        output.append(result.stdout)
+    if result.stderr:
+        output.append(result.stderr)
+    return "\n".join(output)
 
 
 # ----- 工作流输入处理 -----
@@ -383,9 +388,14 @@ async def submit_workflow(config: WorkflowConfig) -> str:
         "--input_json", config.input_json
     ]
 
-    # 移除 timeout 参数
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return result.stdout
+    # 同时返回 stderr 和 stdout 的内容
+    output = []
+    if result.stdout:
+        output.append(result.stdout)
+    if result.stderr:
+        output.append(result.stderr)
+    return "\n".join(output)
 
 
 # ===== Docker 镜像工具 =====
