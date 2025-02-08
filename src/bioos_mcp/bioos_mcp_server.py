@@ -59,6 +59,34 @@ class WorkflowImportConfig:
 
 
 @dataclass
+class WorkflowImportStatusConfig:
+    """工作流导入状态查询配置"""
+    ak: str
+    sk: str
+    workspace_name: str
+    workflow_id: str
+
+
+@dataclass
+class WorkflowStatusConfig:
+    """工作流运行状态查询配置"""
+    ak: str
+    sk: str
+    workspace_name: str
+    submission_id: str
+
+
+@dataclass
+class WorkflowLogsConfig:
+    """工作流日志获取配置"""
+    ak: str
+    sk: str
+    workspace_name: str
+    submission_id: str
+    output_dir: str = "."  # 默认为当前目录
+
+
+@dataclass
 class WorkflowInputConfig:
     """工作流输入配置"""
     wdl_path: str
@@ -134,7 +162,10 @@ def wdl_development_workflow_prompt() -> str:
     3. 工作流上传
        - 准备工作流描述信息
        - 使用 import_workflow 工具上传到 Bio-OS
-       - 确认上传成功
+       - 使用 check_workflow_import_status 查询导入状态
+         * 等待 WDL 语法验证完成
+         * 确认导入成功
+       - 如果导入失败，根据错误信息修改 WDL 文件并重试
 
     4. Docker 镜像准备
        - 为每个 task 准备对应的 Dockerfile
@@ -158,9 +189,12 @@ def wdl_development_workflow_prompt() -> str:
 
     7. 工作流执行与监控
        - 使用 submit_workflow 提交工作流
-       - 监控执行进度
+       - 使用 check_workflow_status 监控执行进度
+         * 定期查询任务状态
+         * 等待执行完成
        - 如果执行失败：
-         * 分析错误日志
+         * 使用 get_workflow_logs 获取详细的执行日志
+         * 分析日志中的错误信息
          * 根据错误信息修改相关配置
          * 重新提交直到成功或决定终止
 
@@ -382,14 +416,89 @@ def workflow_submission_prompt() -> str:
 @mcp.tool()
 async def submit_workflow(config: WorkflowConfig) -> str:
     """提交并监控 Bio-OS 工作流"""
+    try:
+        cmd = [
+            "bw", "--ak", config.ak, "--sk", config.sk, "--workspace_name",
+            config.workspace_name, "--workflow_name", config.workflow_name,
+            "--input_json", config.input_json
+        ]
+
+        result = subprocess.run(cmd,
+                                capture_output=True,
+                                text=True,
+                                check=True)
+        # 同时返回 stderr 和 stdout 的内容
+        output = []
+        if result.stdout:
+            output.append(result.stdout)
+        if result.stderr:
+            output.append(result.stderr)
+
+        if not output:  # 如果没有任何输出
+            return "工作流提交成功！请使用 check_workflow_status 查询执行状态。"
+
+        return "\n".join(output)
+    except subprocess.CalledProcessError as e:
+        error_msg = []
+        if e.stdout:
+            error_msg.append(f"标准输出：\n{e.stdout}")
+        if e.stderr:
+            error_msg.append(f"错误输出：\n{e.stderr}")
+        return f"工作流提交失败：\n" + "\n".join(error_msg)
+    except Exception as e:
+        return f"提交过程出现错误：{str(e)}"
+
+
+@mcp.tool()
+async def check_workflow_run_status(config: WorkflowStatusConfig) -> str:
+    """查询工作流运行状态"""
     cmd = [
-        "bw", "--ak", config.ak, "--sk", config.sk, "--workspace_name",
-        config.workspace_name, "--workflow_name", config.workflow_name,
-        "--input_json", config.input_json
+        "bw_status_check", "--ak", config.ak, "--sk", config.sk,
+        "--workspace_name", config.workspace_name, "--submission_id",
+        config.submission_id
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    # 同时返回 stderr 和 stdout 的内容
+    output = []
+    if result.stdout:
+        output.append(result.stdout)
+    if result.stderr:
+        output.append(result.stderr)
+    return "\n".join(output)
+
+
+@mcp.tool()
+async def check_workflow_import_status(
+        config: WorkflowImportStatusConfig) -> str:
+    """查询工作流导入状态"""
+    cmd = [
+        "bw_import_status_check", "--ak", config.ak, "--sk", config.sk,
+        "--workspace_name", config.workspace_name, "--workflow_id",
+        config.workflow_id
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    output = []
+    if result.stdout:
+        output.append(result.stdout)
+    if result.stderr:
+        output.append(result.stderr)
+    return "\n".join(output)
+
+
+@mcp.tool()
+async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
+    """获取工作流执行日志"""
+    cmd = [
+        "get_submission_logs", "--ak", config.ak, "--sk", config.sk,
+        "--workspace_name", config.workspace_name, "--submission_id",
+        config.submission_id
+    ]
+
+    if config.output_dir != ".":
+        cmd.extend(["--output_dir", config.output_dir])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     output = []
     if result.stdout:
         output.append(result.stdout)
