@@ -1,0 +1,39 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+
+# This registers the initialization code for the conda shell code
+# It also activates default environment in the end, so we don't need to activate it manually
+# Documentation: https://docs.conda.io/projects/conda/en/latest/dev-guide/deep-dives/activation.html
+mkdir -p /home/${NB_USER}/.local/share/code-server/extensions
+cp /opt/code-server/extensions/extensions.json /home/ies/.local/share/code-server/extensions/
+ln -s /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/.local/share/code-server/extensions/
+mkdir -p /home/${NB_USER}/.ssh
+
+mkdir -p /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings && \
+    cat <<EOF > /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+{
+  "mcpServers": {
+    "bioos": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/opt/lib/bioos-mcp-server/src/bioos_mcp",
+        "run",
+        "/opt/lib/bioos-mcp-server/src/bioos_mcp/bioos_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/opt/lib/bioos-mcp-server/src"
+      }
+    }
+  }
+}
+EOF
+
+echo "alias womtool='java -jar /usr/local/lib/womtool-85.jar'" >> "/home/${NB_USER}/.bashrc"
+chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.bashrc"
+
+chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}"
+chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.local"
+chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.ssh"
+chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
+chmod -R 755 "/home/${NB_USER}/.local"
