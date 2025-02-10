@@ -4,14 +4,65 @@ A Model Context Protocol (MCP) based tool and prompt server for Bio-OS that prov
 
 ## Installation
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
+### Using MCP through Miracle Cloud Interactive Analysis Instance
+When using Miracle Cloud, you can directly use the custom URL [registry-vpc.miracle.ac.cn/infcprelease/iespro:250208](registry-vpc.miracle.ac.cn/infcprelease/iespro:250208) in the interactive analysis instance. The image has already integrated the MCP scripts and related dependencies. You only need to configure your own  LLM model access credentials to start using it.
+
+### Local Installation（Use through local VSCode and Cline plugin）
+#### Pre-requisite  
+Before using this setup, ensure that the following dependencies are installed:
+
+1. VSCode IDE  
+Download and install from: [VSCode Official Site](https://code.visualstudio.com/)
+
+2. Cline Plugin (Required for interacting with Miracle Cloud via VSCode)  
+Install using the following command:  
+    ```sh
+    code --install-extension saoudrizwan.claude-dev
+    ```
+    Users need to configure their own LLM model access credentials.
+
+3. Pybioos (Bio-OS Python SDK for interacting with Bio-OS services)  
+Install using pip:  
+    ```sh
+    pip install pybioos
+    ```
+
+4. JDK (Java Development Kit, required for certain backend services)  
+Recommended version: OpenJDK 11 or later  
+
+- Install on Ubuntu/Debian:  
+  ```sh
+  sudo apt update && sudo apt install openjdk-11-jdk
+  ```
+
+- Install on macOS (via Homebrew):  
+    ```sh
+    brew install openjdk@11
+    ```
+
+- Install on Windows:  Download from: [Adoptium OpenJDK](https://adoptium.net/)
+
+5. Womtool
+    ```sh
+    wget https://github.com/broadinstitute/cromwell/releases/download/85/womtool-85.jar 
+    ```
+    You can install womtool using conda, which will automatically generate a womtool script to build the scheduling logic for the JAR file, or you can add alias or doskey information manually.
+    
+    For Linux/macOS (using alias):
+    ```sh
+    alias womtool='java -jar womtool-85.jar'
+    ```
+    For Windows (using doskey):
+    ```
+    doskey womtool=java -jar womtool-85.jar
+    ```
+#### Obtaining MCP
+
+```sh
+git clone https://github.com/GBA-BI/bioos-mcp-server.git
 ```
 
-2. Ensure the following tools are installed in your system:
-- womtool (for WDL workflow validation)
-- pybioos (for Bio-OS python SDK)
+
 
 ## Features
 
