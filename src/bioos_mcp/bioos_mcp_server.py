@@ -145,8 +145,15 @@ def wdl_development_workflow_prompt() -> str:
        - 为每个步骤创建对应的 task
        - 每个 task 需包含:
          * input 部分：定义输入参数
+           - 对于文件类型的输入，必须使用 File 类型而不是 String
+           - 禁止使用 String 类型传递文件路径，这可能导致云环境下的路径解析错误
+           - 示例：
+             √ File input_bam
+             × String bam_path
          * command 部分：具体的执行命令
          * output 部分：定义输出结果
+           - 输出文件同样必须使用 File 类型
+           - 确保输出文件的路径是相对于工作目录的
          * runtime 部分：指定运行环境要求
            - docker 镜像 (必需)
            - 内存大小 (默认: 8 GB)
