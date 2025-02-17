@@ -37,3 +37,9 @@ chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.local"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.ssh"
 chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
 chmod -R 755 "/home/${NB_USER}/.local"
+
+# Extend CLINE-related MCP Presets to VSCode SSH Remote Environment
+cp /opt/code-server/extensions/extensions.json /home/ies/.vscode-server/extensions
+ln -s /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/.vscode-server/extensions
+mkdir -p /home/${NB_USER}/.vscode-server/extensions
+chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.vscode-server"

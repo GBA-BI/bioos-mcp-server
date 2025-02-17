@@ -2,12 +2,18 @@
 
 A Model Context Protocol (MCP) based tool and prompt server for Bio-OS that provides workflow management and Docker image building capabilities.
 
-## Installation
 
-### Using MCP through Miracle Cloud Interactive Analysis Instance
-When using Miracle Cloud, you can directly use the custom URL [registry-vpc.miracle.ac.cn/infcprelease/iespro:250208](registry-vpc.miracle.ac.cn/infcprelease/iespro:250208) in the interactive analysis instance. The image has already integrated the MCP scripts and related dependencies. You only need to configure your own  LLM model access credentials to start using it.
+## Usage
 
-### Local Installation（Use through local VSCode and Cline plugin）
+
+Whichever way you use it, we highly recommend copying the contents of `bioos-mcp-prompt.md` into your CLINE Custom Instructions for the best experience.
+
+### Miracle Cloud IES Usage （Using MCP through Miracle Cloud Interactive Analysis Instance）
+When using Miracle Cloud, you can directly use the custom URL [registry-vpc.miracle.ac.cn/infcprelease/iespro:250217](registry-vpc.miracle.ac.cn/infcprelease/iespro:250217) in the interactive analysis instance. The image has already integrated the MCP scripts and related dependencies. You can access it using either the web-based Code Server or VSCode's SSH Remote locally. You only need to configure your own  LLM model access credentials to start using it. If you want to use GitHub Copilot capabilities inherited by VSCode, ensure the client-side Copilot is properly configured firstly.
+
+<font color="gray"> If you're using the Inside version or another VSCode-based forked IDE, the extension path may vary. You'll need to manually install the CLINE plugin and complete the MCP configuration. </font>
+
+### Local Installation（Using MCP through local VSCode and Cline plugin）
 #### Pre-requisite  
 Before using this setup, ensure that the following dependencies are installed:
 
@@ -27,7 +33,14 @@ Install using pip:
     pip install pybioos
     ```
 
-4. JDK (Java Development Kit, required for certain backend services)  
+4. uv(a fast, standalone Python package manager)
+Install using pip:  
+    ```sh
+    pip install uv
+    ```
+
+
+5. JDK (Java Development Kit, required for certain backend services)  
 Recommended version: OpenJDK 11 or later  
 
 - Install on Ubuntu/Debian:  
@@ -42,7 +55,7 @@ Recommended version: OpenJDK 11 or later
 
 - Install on Windows:  Download from: [Adoptium OpenJDK](https://adoptium.net/)
 
-5. Womtool
+6. Womtool
     ```sh
     wget https://github.com/broadinstitute/cromwell/releases/download/85/womtool-85.jar 
     ```
@@ -56,13 +69,33 @@ Recommended version: OpenJDK 11 or later
     ```
     doskey womtool=java -jar womtool-85.jar
     ```
+
+
 #### Obtaining MCP
 
 ```sh
 git clone https://github.com/GBA-BI/bioos-mcp-server.git
 ```
 
-
+Configure the script path in CLINE's MCP settings like this：
+```json
+{
+  "mcpServers": {
+    "bioos": {
+      "command": "path/to/uv",
+      "args": [
+        "--directory",
+        "path/to/bioos-mcp-server",
+        "run",
+        "path/to/bioos-mcp-server/src/bioos_mcp/bioos_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "path/to/bioos-mcp-server/src"
+      }
+    }
+  }
+} 
+```
 
 ## Features
 
@@ -76,39 +109,6 @@ git clone https://github.com/GBA-BI/bioos-mcp-server.git
 - Build Docker images
 - Check build status
 
-## Usage
-
-1. Run in development mode:
-```bash
-mcp dev bioos_mcp_server.py
-```
-
-2. Install to Claude Desktop:
-```bash
-mcp install bioos_mcp_server.py
-```
-
-3. Run in Cline
-Add the following to your Cline config:
-```json
-{
-  "mcpServers": {
-    "bioos": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "path/to/bioos-mcp-server",
-        "run",
-        "src/bioos_mcp/bioos_mcp_server.py"
-      ],
-      "env": {
-        "PYTHONPATH": "path/to/bioos-mcp-server/src"
-      }
-    }
-  }
-} 
-```
-Copy the content of bioos-mcp-prompt.md to your Cline Custom Instructions.
 
 
 ## API Reference
