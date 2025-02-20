@@ -50,7 +50,7 @@ Follow the configuration process shown below. The Bio-OS MCP Server is ready to 
 ![](figures/standalone_configure.png)
 
 Since CLINE does not yet support MCP Prompts, copy the contents of `bioos-mcp-prompt.md` into CLINE's Custom Instructions for optimal experience:
-![](figures/instruction.png)
+![](figures/prompt.png)
 
 After completing the configuration, you can begin using the Bio-OS MCP Server for development.
 
@@ -70,7 +70,7 @@ For Miracle Cloud users, we provide a pre-configured Docker image with all Bio-O
 ![](figures/mcp_config.png)
 
 3. Since CLINE does not yet support MCP Prompts, copy the contents of `bioos-mcp-prompt.md` into CLINE's Custom Instructions for optimal experience:
-![](figures/prompt.png)
+![](figures/instruction.png)
 
 Once configured, you can begin development with Bio-OS MCP Server.
 
