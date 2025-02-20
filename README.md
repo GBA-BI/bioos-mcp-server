@@ -2,82 +2,31 @@
 
 A Model Context Protocol (MCP) based tool and prompt server for Bio-OS that provides workflow management and Docker image building capabilities.
 
-
 ## Usage
+We recommend using the CLINE extension for VSCode to interact with this MCP tool. There are two deployment options available: standalone installation on your local machine or using Code Server in a Miracle Cloud IES instance. Choose the option that best suits your needs.
 
+### Local Installation (Using MCP through local VSCode)
+#### Prerequisites
+Bio-OS MCP Server requires the following dependencies:
 
-Whichever way you use it, we highly recommend copying the contents of `bioos-mcp-prompt.md` into your CLINE Custom Instructions for the best experience.
+1. Install uv (Python package manager):
+```bash
+pip install uv
+```
 
-### Miracle Cloud IES Usage （Using MCP through Miracle Cloud Interactive Analysis Instance）
-When using Miracle Cloud, you can directly use the custom URL [registry-vpc.miracle.ac.cn/infcprelease/iespro:250217](registry-vpc.miracle.ac.cn/infcprelease/iespro:250217) in the interactive analysis instance. The image has already integrated the MCP scripts and related dependencies. You can access it using either the web-based Code Server or VSCode's SSH Remote locally. You only need to configure your own  LLM model access credentials to start using it. If you want to use GitHub Copilot capabilities inherited by VSCode, ensure the client-side Copilot is properly configured firstly.
+2. Install Cromwell (Workflow execution engine):
+```bash
+brew install cromwell
+```
 
-<font color="gray"> If you're using the Inside version or another VSCode-based forked IDE, the extension path may vary. You'll need to manually install the CLINE plugin and complete the MCP configuration. </font>
-
-### Local Installation（Using MCP through local VSCode and Cline plugin）
-#### Pre-requisite  
-Before using this setup, ensure that the following dependencies are installed:
-
-1. VSCode IDE  
-Download and install from: [VSCode Official Site](https://code.visualstudio.com/)
-
-2. Cline Plugin (Required for interacting with Miracle Cloud via VSCode)  
-Install using the following command:  
-    ```sh
-    code --install-extension saoudrizwan.claude-dev
-    ```
-    Users need to configure their own LLM model access credentials.
-
-3. Pybioos (Bio-OS Python SDK for interacting with Bio-OS services)  
-Install using pip:  
-    ```sh
-    pip install pybioos
-    ```
-
-4. uv(a fast, standalone Python package manager)
-Install using pip:  
-    ```sh
-    pip install uv
-    ```
-
-
-5. JDK (Java Development Kit, required for certain backend services)  
-Recommended version: OpenJDK 11 or later  
-
-- Install on Ubuntu/Debian:  
-  ```sh
-  sudo apt update && sudo apt install openjdk-11-jdk
-  ```
-
-- Install on macOS (via Homebrew):  
-    ```sh
-    brew install openjdk@11
-    ```
-
-- Install on Windows:  Download from: [Adoptium OpenJDK](https://adoptium.net/)
-
-6. Womtool
-    ```sh
-    wget https://github.com/broadinstitute/cromwell/releases/download/85/womtool-85.jar 
-    ```
-    You can install womtool using conda, which will automatically generate a womtool script to build the scheduling logic for the JAR file, or you can add alias or doskey information manually.
-    
-    For Linux/macOS (using alias):
-    ```sh
-    alias womtool='java -jar womtool-85.jar'
-    ```
-    For Windows (using doskey):
-    ```
-    doskey womtool=java -jar womtool-85.jar
-    ```
-
-
-#### Obtaining MCP
-
-```sh
+#### Installation
+Clone the Bio-OS MCP Server repository:
+```bash
 git clone https://github.com/GBA-BI/bioos-mcp-server.git
 ```
 
-Configure the script path in CLINE's MCP settings like this：
+#### Configuration
+Configure the Bio-OS MCP Server script path in CLINE's MCP settings. Replace the placeholders with absolute paths to your installation:
 ```json
 {
   "mcpServers": {
@@ -97,6 +46,34 @@ Configure the script path in CLINE's MCP settings like this：
 } 
 ```
 
+Follow the configuration process shown below. The Bio-OS MCP Server is ready to use when the status turns green. If the connection is unstable, click "Retry Connection":
+![](figures/standalone_configure.png)
+
+Since CLINE does not yet support MCP Prompts, copy the contents of `bioos-mcp-prompt.md` into CLINE's Custom Instructions for optimal experience:
+![](figures/instruction.png)
+
+After completing the configuration, you can begin using the Bio-OS MCP Server for development.
+
+### Cloud Installation (Using MCP through Code Server in Miracle Cloud)
+For Miracle Cloud users, we provide a pre-configured Docker image with all Bio-OS MCP Server dependencies. Follow these steps:
+
+1. Launch an IES instance using the image: `registry-vpc.miracle.ac.cn/infcprelease/iespro:250217`
+2. Select "Open with VSCode" to access the development environment:
+![](figures/IES_init.png)
+![](figures/run_vscode.png)
+
+#### Configuration in Code Server
+1. Click the CLINE icon in the left sidebar and configure your LLM model credentials:
+![](figures/cline_extension.png)
+
+2. Navigate to CLINE's MCP configuration page and verify that Bio-OS MCP Server is properly connected. Use "Retry Connection" if needed:
+![](figures/mcp_config.png)
+
+3. Since CLINE does not yet support MCP Prompts, copy the contents of `bioos-mcp-prompt.md` into CLINE's Custom Instructions for optimal experience:
+![](figures/prompt.png)
+
+Once configured, you can begin development with Bio-OS MCP Server.
+
 ## Features
 
 ### 1. Workflow Management
@@ -108,8 +85,8 @@ Configure the script path in CLINE's MCP settings like this：
 ### 2. Docker Image Management
 - Build Docker images
 - Check build status
-
-
+- Monitor build progress
+- Retrieve build logs
 
 ## API Reference
 
