@@ -5,16 +5,17 @@
 # It also activates default environment in the end, so we don't need to activate it manually
 # Documentation: https://docs.conda.io/projects/conda/en/latest/dev-guide/deep-dives/activation.html
 mkdir -p /home/${NB_USER}/.local/share/code-server/extensions
-cp /opt/code-server/extensions/extensions.json /home/ies/.local/share/code-server/extensions/
-ln -s /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/.local/share/code-server/extensions/
 mkdir -p /home/${NB_USER}/.ssh
+cp /opt/code-server/extensions/extensions.json /home/${NB_USER}/.local/share/code-server/extensions/
 
-mkdir -p /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings && \
-    cat <<EOF > /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+ln -sf /opt/code-server/extensions/saoudrizwan.claude-dev-3.4.4-universal /home/${NB_USER}/.local/share/code-server/extensions/
+
+mkdir -p /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings && \
+    cat <<EOF > /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
 {
   "mcpServers": {
     "bioos": {
-      "command": "uv",
+      "command": "/opt/conda/bin/uv",
       "args": [
         "--directory",
         "/opt/lib/bioos-mcp-server/src/bioos_mcp",
@@ -30,16 +31,21 @@ mkdir -p /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claud
 EOF
 
 echo "alias womtool='java -jar /usr/local/lib/womtool-85.jar'" >> "/home/${NB_USER}/.bashrc"
-chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.bashrc"
+chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
+
+# Expand the preset extensions for Code Server to centralized SSH remote environments based on VSCode-related IDEs. 
+ssh_remote_servers=(".vscode-server" ".cursor-server" ".vscode-server-insiders")
+
+for server in "${ssh_remote_servers[@]}"; do
+    mkdir -p /home/${NB_USER}/${server}/extensions
+    mkdir -p /home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings/ && \
+    cp /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json /home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings
+    cp /opt/code-server/extensions/extensions.json /home/${NB_USER}/${server}/extensions
+    ln -sf /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/${server}/extensions
+    mkdir -p /home/${NB_USER}/${server}/extensions
+    chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/${server}"
+done
 
 chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.local"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.ssh"
-chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
-chmod -R 755 "/home/${NB_USER}/.local"
-
-# Extend CLINE-related MCP Presets to VSCode SSH Remote Environment
-cp /opt/code-server/extensions/extensions.json /home/ies/.vscode-server/extensions
-ln -s /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/.vscode-server/extensions
-mkdir -p /home/${NB_USER}/.vscode-server/extensions
-chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.vscode-server"
