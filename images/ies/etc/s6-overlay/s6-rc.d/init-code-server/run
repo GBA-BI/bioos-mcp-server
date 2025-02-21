@@ -4,48 +4,69 @@
 # This registers the initialization code for the conda shell code
 # It also activates default environment in the end, so we don't need to activate it manually
 # Documentation: https://docs.conda.io/projects/conda/en/latest/dev-guide/deep-dives/activation.html
+
+# Create necessary directories
 mkdir -p /home/${NB_USER}/.local/share/code-server/extensions
 mkdir -p /home/${NB_USER}/.ssh
-cp /opt/code-server/extensions/extensions.json /home/${NB_USER}/.local/share/code-server/extensions/
 
-ln -sf /opt/code-server/extensions/saoudrizwan.claude-dev-3.4.4-universal /home/${NB_USER}/.local/share/code-server/extensions/
-
-mkdir -p /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings && \
-    cat <<EOF > /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+if [[ ! -f "/home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" ]]; then
+    echo "Initialization of MCP-related plugins"
+    
+    # Copy and link extensions
+    cp /opt/code-server/extensions/extensions.json /home/${NB_USER}/.local/share/code-server/extensions/
+    find /opt/code-server/extensions -name 'saoudrizwan.claude-dev-*-universal' -type d -exec ln -sf {} "/home/${NB_USER}/.local/share/code-server/extensions/" \;
+    
+    # Create settings directory and write configuration
+    mkdir -p /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings
+    cat <<'EOF' > /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
 {
   "mcpServers": {
     "bioos": {
-      "command": "/opt/conda/bin/uv",
+      "command": "/opt/conda/bin/python",
       "args": [
-        "--directory",
-        "/opt/lib/bioos-mcp-server/src/bioos_mcp",
-        "run",
         "/opt/lib/bioos-mcp-server/src/bioos_mcp/bioos_mcp_server.py"
       ],
       "env": {
         "PYTHONPATH": "/opt/lib/bioos-mcp-server/src"
-      }
+      },
+      "disabled": false,
+      "autoApprove": []
     }
   }
 }
 EOF
 
-echo "alias womtool='java -jar /usr/local/lib/womtool-85.jar'" >> "/home/${NB_USER}/.bashrc"
-chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
+    # Set permissions for server directory
+    chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
 
-# Expand the preset extensions for Code Server to centralized SSH remote environments based on VSCode-related IDEs. 
-ssh_remote_servers=(".vscode-server" ".cursor-server" ".vscode-server-insiders")
+    # Expand the preset extensions for Code Server to centralized SSH remote environments
+    for server in .vscode-server .cursor-server .vscode-server-insiders; do
+        # Create directories
+        mkdir -p "/home/${NB_USER}/${server}/extensions"
+        mkdir -p "/home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings"
+        
+        # Copy settings and extensions
+        cp "/home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" \
+           "/home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings"
+        cp "/opt/code-server/extensions/extensions.json" "/home/${NB_USER}/${server}/extensions"
+        find /opt/code-server/extensions -name 'saoudrizwan.claude-dev-*-universal' -type d -exec ln -sf {} "/home/${NB_USER}/${server}/extensions" \;
+        
+        # Set permissions
+        chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/${server}"
+    done
+else
+    echo "The user already has a configuration file."
+fi
 
-for server in "${ssh_remote_servers[@]}"; do
-    mkdir -p /home/${NB_USER}/${server}/extensions
-    mkdir -p /home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings/ && \
-    cp /home/${NB_USER}/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json /home/${NB_USER}/${server}/data/User/globalStorage/saoudrizwan.claude-dev/settings
-    cp /opt/code-server/extensions/extensions.json /home/${NB_USER}/${server}/extensions
-    ln -sf /opt/code-server/extensions/saoudrizwan.claude-dev-3.2.13-universal /home/ies/${server}/extensions
-    mkdir -p /home/${NB_USER}/${server}/extensions
-    chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/${server}"
-done
+# Add womtool alias if .bashrc doesn't exist
+if [[ ! -f "/home/${NB_USER}/.bashrc" ]]; then
+    echo "alias womtool='java -jar /usr/local/lib/womtool-85.jar'" >> "/home/${NB_USER}/.bashrc"
+fi
 
+# Set final permissions
 chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.local"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.ssh"
+chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.bashrc"
+chown -Rf "${NB_USER}:${NB_USER}" /opt/lib/bioos-mcp-server
+chmod -R 755 "/home/${NB_USER}/.local"

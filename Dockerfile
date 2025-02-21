@@ -17,7 +17,7 @@ RUN apt-get install -y iputils-ping openjdk-21-jdk \
 RUN /opt/conda/bin/pip install pybioos
 
 # Install the uv package, possibly for running a web server or API
-RUN /opt/conda/bin/pip install uv
+RUN /opt/conda/bin/pip install uv mcp
     
 # Install the Claude Dev VSCode extension for code-server in a specified directory
 RUN mkdir -p /opt/code-server/extensions && \
