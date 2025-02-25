@@ -114,12 +114,12 @@ class DockerfileConfig:
     """Dockerfile 生成配置"""
     tool_name: str  # 工具名称
     tool_version: str  # 工具版本
+    output_path: str  # Dockerfile 输出路径
     conda_packages: List[str]  # 需要安装的 conda 包列表
     conda_channels: List[str] = field(
         default_factory=lambda: ["conda-forge", "bioconda", "defaults"
                                  ])  # conda 安装源
     python_version: str = "3.10"  # Python 版本
-    output_path: str = "Dockerfile"  # Dockerfile 输出路径
 
 
 @dataclass
@@ -530,10 +530,11 @@ def docker_build_prompt() -> str:
        请提供以下信息：
        - 工具名称 (tool_name)
        - 工具版本 (tool_version)
+       - Dockerfile 输出路径 (output_path)
        - 需要安装的 conda 包列表 (conda_packages)
        - conda 安装源 [可选，默认使用 conda-forge 和 bioconda]
        - Python 版本 [可选，默认 3.10]
-       - Dockerfile 输出路径 [可选，默认 "Dockerfile"]
+       
 
     2. 构建镜像
        请提供以下信息：
@@ -561,11 +562,7 @@ async def generate_dockerfile(config: DockerfileConfig,
         context: MCP 工具上下文，包含用户的当前工作目录
     """
     try:
-        # 使用绝对路径
-        output_path = Path('/Users/liujilong/develop/cline/Dockerfile')
-
-        # 确保目标目录存在
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path = config.output_path
 
         # 生成 Dockerfile 内容
         dockerfile_content = f"""# 使用 Miniconda3 作为基础镜像
@@ -598,6 +595,7 @@ ENTRYPOINT ["conda", "run", "-n", "{config.tool_name}"]
         with open(output_path, 'w') as f:
             f.write(dockerfile_content)
 
+        # 返回绝对路径
         return f"成功生成 Dockerfile：{output_path}"
     except IOError as e:
         return f"Dockerfile 生成失败: {str(e)}"

@@ -1,2 +1,2 @@
-requests>=2.19.1,<2.26.0
+requests>=2.19.1
 pybioos>=0.0.14

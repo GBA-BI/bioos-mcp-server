@@ -125,6 +125,7 @@ Docker 镜像构建流程：
    请提供以下信息：
    - 工具名称 (tool_name)
    - 工具版本 (tool_version)
+   - Dockerfile 输出路径 (output_path)
    - 需要安装的 conda 包列表 (conda_packages)
    - conda 安装源 [可选，默认使用 conda-forge 和 bioconda]
    - Python 版本 [可选，默认 3.10]
