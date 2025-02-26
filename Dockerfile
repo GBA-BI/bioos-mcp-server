@@ -29,6 +29,8 @@ RUN git clone https://github.com/GBA-BI/bioos-mcp-server.git /opt/lib/bioos-mcp-
 # Copy and set appropriate permissions for the script that initializes code-server
 COPY --chmod=755 ./images/ies/etc/s6-overlay/s6-rc.d/init-code-server/run /etc/s6-overlay/s6-rc.d/init-code-server/run
 
+COPY --chmod=755 ./bin/womtool /bin/womtool
+
 # Create configuration directory and write settings for the VSCode extension
 RUN mkdir -p /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings && \
     cat <<EOF > /home/ies/.local/share/code-server/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
