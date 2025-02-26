@@ -58,11 +58,6 @@ else
     echo "The user already has a configuration file."
 fi
 
-# Add womtool alias if .bashrc doesn't exist
-if [[ ! -f "/home/${NB_USER}/.bashrc" ]]; then
-    echo "alias womtool='java -jar /usr/local/lib/womtool-85.jar'" >> "/home/${NB_USER}/.bashrc"
-fi
-
 # Set final permissions
 chown "${NB_USER}:${NB_USER}" "/home/${NB_USER}"
 chown -Rf "${NB_USER}:${NB_USER}" "/home/${NB_USER}/.local"
