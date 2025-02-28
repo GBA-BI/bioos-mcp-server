@@ -1,0 +1,111 @@
+{
+    "instructions": [
+        {
+            "name": "dockstore_search",
+            "description": "搜索Dockstore工作流",
+            "prompt": """
+                请提供 Dockstore 工作流搜索配置。支持多字段复杂搜索和文件获取。
+
+                1. 搜索参数说明:
+                    A. query: 搜索条件列表，每个条件包含三个元素
+                        ["搜索词", "搜索字段", "布尔操作符"]
+                        示例: ["gatk", "description", "AND"]
+                    
+                    B. 可用搜索字段:
+                        - full_workflow_path: 工作流完整路径
+                        - description: 工作流描述
+                        - name: 工作流名称
+                        - author: 作者名称
+                        - organization: 组织名称
+                        - labels: 工作流标签
+                        - content: 工作流源文件内容
+
+                    C. 布尔操作符:
+                        - AND: 与其他条件同时满足
+                        - OR: 满足任一条件
+
+                2. 查询类型 (query_type):
+                    - match_phrase: 精确短语匹配（默认）
+                    - wildcard: 通配符匹配（支持*号）
+
+                3. 其他选项:
+                    - sentence: 是否作为句子搜索（允许词序灵活匹配）
+                    - output_full: 是否显示完整结果
+                    - get_files: 指定工作流路径以获取文件
+
+                配置示例:
+                {
+                    "query": [
+                        ["gatk", "description", "AND"],
+                        ["broadinstitute", "organization", "AND"]
+                    ],
+                    "query_type": "match_phrase",
+                    "sentence": true,
+                    "output_full": false
+                }
+                """,
+            "shortcut": "ds"
+        },
+        {
+            "name": "result_summary",
+            "description": "生成检索结果摘要",
+            "prompt": """
+                生成 Dockstore 工作流检索结果的摘要报告，支持自动查找或手动指定结果文件。
+
+                使用方式:
+                1. 自动模式（推荐）:
+                   - 自动查找最新的检索结果文件
+                   - 无需提供任何参数
+                {
+                }
+                
+                2. 手动指定模式:
+                   - 通过 path 参数指定结果文件路径
+                {
+                    "path": "./results/dockstore_results.json"
+                }
+
+                功能说明:
+                - 自动从项目目录中查找最新的结果文件
+                - 生成格式化的 Markdown 摘要文档
+                - 摘要文件保存在结果文件同目录下
+                - 文件名：formatted_workflows.md
+
+                注意事项:
+                - 确保已执行过 dockstore_search 命令
+                - 确保有读写相关目录的权限
+                - 支持相对路径和绝对路径
+                """,
+            "shortcut": "rs"
+        },
+        {
+            "name": "dockstore_workflow_download",
+            "description": "下载工作流文件",
+            "prompt": """
+                请提供 Dockstore 工作流文件下载配置信息：
+
+                1. JSON文件路径 (json_file):
+                    - 包含工作流信息的JSON文件路径
+                    - 通常是使用 dockstore_search 工具生成的结果文件
+                    - 示例: "dockstore_results.json"
+
+                2. 工作流路径 (workflow_path):
+                    - 要下载的工作流的完整路径
+                    - 可以从检索结果摘要中获取
+                    - 示例: "github.com/broadinstitute/gatk-workflows/cnv-workflow"
+
+                配置示例:
+                {
+                    "json_file": "dockstore_results.json",
+                    "workflow_path": "github.com/broadinstitute/gatk-workflows/cnv-workflow"
+                }
+
+                说明:
+                    - 程序会自动创建以工作流名称命名的目录
+                    - 所有WDL文件会保存在该目录下
+                    - 只下载包含实际内容的WDL文件
+                """,
+            "shortcut": "dd"
+        }
+    ]
+}
