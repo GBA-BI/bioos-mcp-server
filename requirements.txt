@@ -1,2 +1,17 @@
+# 基础 HTTP 请求库
 requests>=2.19.1
+
+# BioOS SDK
 pybioos>=0.0.14
+
+# MCP 服务器框架依赖
+mcp-server>=0.1.0
+
+# 类型注解支持
+typing-extensions>=4.0.0
+
+# 数据类支持 (Python < 3.7)
+dataclasses>=0.8; python_version < "3.7"
+
+# 异步支持
+aiohttp>=3.8.0

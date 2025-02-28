@@ -42,6 +42,18 @@ Configure the Bio-OS MCP Server script path in CLINE's MCP settings. Replace the
         "PYTHONPATH": "path/to/bioos-mcp-server/src"
       }
     }
+    "dockstore": {
+      "command": "path/to/uv",
+      "args": [
+        "--directory",
+        "path/to/bioos-mcp-server",
+        "run",
+        "path/to/bioos-mcp-server/src/bioos_mcp/dockstore_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "path/to/bioos-mcp-server/src"
+      }
+    }
   }
 } 
 ```
@@ -91,7 +103,7 @@ Once configured, you can begin development with Bio-OS MCP Server.
 ## API Reference
 
 ### Tools
-
+#### bioos server tools
 1. `submit_workflow`
    - Function: Submit Bio-OS workflow
    - Parameters:
@@ -135,6 +147,27 @@ Once configured, you can begin development with Bio-OS MCP Server.
    - Function: Check Docker image build status
    - Parameters:
      - task_id: Build task ID
+
+#### dockstore server tools:
+1. dockstore_search
+   - Searches Dockstore workflows
+   - Supports complex field searches and file retrieval
+   - Parameters:
+      - query: List of search conditions (searchTerm, field, operator)
+      - query_type: "match_phrase" (default) or "wildcard"
+      - sentence: Boolean for flexible word order matching
+      - output_full: Boolean for full result display
+      - get_files: Optional workflow path to retrieve files
+
+2. result_summary
+   - Generates search result summaries
+   - Optional parameter: path (specific results file path)
+   - Auto-finds latest results file if no path provided
+
+3. dockstore_workflow_download
+   - Downloads workflow files
+   - Required parameters: json_file, workflow_path
+
 
 ### Prompts (Not supported in Cline yet)
 
