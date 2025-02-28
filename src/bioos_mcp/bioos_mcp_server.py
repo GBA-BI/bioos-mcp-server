@@ -115,11 +115,11 @@ class DockerfileConfig:
     tool_name: str  # 工具名称
     tool_version: str  # 工具版本
     output_path: str  # Dockerfile 输出路径
+    python_version: str  # Python 版本
     conda_packages: List[str]  # 需要安装的 conda 包列表
     conda_channels: List[str] = field(
         default_factory=lambda: ["conda-forge", "bioconda", "defaults"
                                  ])  # conda 安装源
-    python_version: str = "3.10"  # Python 版本
 
 
 @dataclass
@@ -553,8 +553,7 @@ def docker_build_prompt() -> str:
 
 # ----- Docker 构建工具 -----
 @mcp.tool()
-async def generate_dockerfile(config: DockerfileConfig,
-                              context: Dict[str, Any]) -> str:
+async def generate_dockerfile(config: DockerfileConfig) -> str:
     """生成用于构建生物信息工具的 Dockerfile
     
     Args:
@@ -564,38 +563,37 @@ async def generate_dockerfile(config: DockerfileConfig,
     try:
         output_path = config.output_path
 
+        # 生成 conda channels 配置命令
+        channels_config = ' && \\\n    '.join(
+            f'conda config --add channels {channel}'
+            for channel in config.conda_channels)
+
+        # 生成 conda 包安装列表
+        packages_list = ' '.join(config.conda_packages)
+
         # 生成 Dockerfile 内容
-        dockerfile_content = f"""# 使用 Miniconda3 作为基础镜像
-FROM continuumio/miniconda3
+        dockerfile_content = f"""FROM continuumio/miniconda3
 
 # 设置工作目录
 WORKDIR /app
 
-# 配置 conda channels
-{chr(10).join(f'RUN conda config --add channels {channel}' for channel in config.conda_channels)}
-RUN conda config --set channel_priority strict
+# 配置 Conda channels 并创建独立环境
+RUN {channels_config} && \\
+    conda config --set channel_priority strict && \\
+    conda create -n {config.tool_name} python={config.python_version} {packages_list} -y && \\
+    conda clean -afy
 
-# 创建独立的 conda 环境
-RUN conda create -n {config.tool_name} python={config.python_version} -y
-
-# 激活环境并安装工具
-SHELL ["conda", "run", "-n", "{config.tool_name}", "/bin/bash", "-c"]
-
-# 安装所需的包
-RUN conda install -y {' '.join(config.conda_packages)}
-
-# 设置默认环境
+# 将环境路径添加到系统 PATH
 ENV PATH /opt/conda/envs/{config.tool_name}/bin:$PATH
 
-# 设置入口点为工具环境
-ENTRYPOINT ["conda", "run", "-n", "{config.tool_name}"]
+# 设置默认命令
+CMD ["/bin/bash"]
 """
 
         # 写入 Dockerfile
         with open(output_path, 'w') as f:
             f.write(dockerfile_content)
 
-        # 返回绝对路径
         return f"成功生成 Dockerfile：{output_path}"
     except IOError as e:
         return f"Dockerfile 生成失败: {str(e)}"
