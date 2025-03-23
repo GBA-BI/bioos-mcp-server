@@ -1,11 +1,12 @@
 # 基础 HTTP 请求库
 requests>=2.19.1
+httpx>=0.24.1  # 添加 httpx 依赖
 
 # BioOS SDK
 pybioos>=0.0.14
 
 # MCP 服务器框架依赖
-mcp-server>=0.1.0
+mcp[cli]>=1.4.0
 
 # 类型注解支持
 typing-extensions>=4.0.0
@@ -15,3 +16,12 @@ dataclasses>=0.8; python_version < "3.7"
 
 # 异步支持
 aiohttp>=3.8.0
+
+# JSON 处理
+python-json>=0.2.1
+
+# 文件系统操作
+pathlib>=1.0.1
+
+# 日期时间处理
+python-dateutil>=2.8.2

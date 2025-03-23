@@ -10,58 +10,22 @@ Features:
 - Support wildcard matching
 - Support full sentence search
 - Sort results by relevance
-- Filter by descriptor type, verification status and more
 - Automatic file downloads
 
 Searchable Fields:
 - full_workflow_path: Complete workflow path
 - description: Workflow description
 - name: Workflow name
-- workflowName: Workflow display name
 - organization: Organization name
-- all_authors.name: Author names
-- labels.value: Workflow labels
-- categories.name: Workflow categories
+- labels: Workflow labels
 - workflowVersions.sourceFiles.content: Workflow source file content
-- input_file_formats.value: Input file formats
-- output_file_formats.value: Output file formats
 
 Usage Examples:
-1. Basic search for workflows about RNA sequencing:
-   python dockstore_search.py -q "RNA-seq" "description" "AND"
+1. Search for single-cell RNA analysis workflows:
+   python dockstore_search.py -q "single cell RNA" "description" "AND" --sentence
 
-2. Search for WDL workflows for variant calling:
-   python dockstore_search.py -q "variant calling" "description" "AND" --descriptor-type "WDL"
-
-3. Search for verified workflows for cancer analysis:
-   python dockstore_search.py -q "cancer" "description" "AND" --verified-only
-
-4. Multi-field search with different criteria:
-   python dockstore_search.py -q "Broad Institute" "organization" "AND" -q "WDL" "descriptorType" "AND"
-
-5. Search with wildcard matching:
-   python dockstore_search.py -q "genom*" "description" "OR" --type wildcard
-
-6. Search for workflows by author:
-   python dockstore_search.py -q "John Smith" "all_authors.name" "AND"
-
-7. Search for workflows with specific input format:
-   python dockstore_search.py -q "BAM" "input_file_formats.value" "AND"
-
-8. Search for workflows with specific output format:
-   python dockstore_search.py -q "VCF" "output_file_formats.value" "AND"
-
-9. Search for workflows with full detail output:
-   python dockstore_search.py -q "exome" "description" "AND" --outputfull
-
-10. Search for specific workflow by path:
-    python dockstore_search.py -q "github.com/broadinstitute/gatk/Mutect2" "full_workflow_path" "AND"
-
-11. Search for workflows in specific category:
-    python dockstore_search.py -q "Genomics" "categories.name" "AND"
-
-12. Search for both active and archived workflows:
-    python dockstore_search.py -q "legacy" "description" "AND" --include-archived
+2. Search and download workflow:
+   python dockstore_search.py -d "github.com/broadinstitute/TAG-public/CNV-Profiler" "full_workflow_path" "AND"
 """
 
 from typing import Any, Dict, List, Optional, Union
@@ -111,28 +75,18 @@ class DockstoreSearch:
         self, 
         queries: List[Dict[str, Union[List[str], str]]], 
         is_sentence: bool,
-        query_type: str,
-        descriptor_type: str = None,  # 新增：描述符类型筛选
-        verified_only: bool = False,  # 新增：仅已验证
-        include_archived: bool = False  # 新增：包含归档的工作流
+        query_type: str
     ) -> Dict[str, Any]:
-        """Build the search request body with enhanced filtering options."""
+        """Build the search request body."""
         search_body = {
             "size": 201,
             "_source": [
-                # 基本元数据
                 "all_authors", "approvedAITopic", "descriptorType",
                 "descriptorTypeSubclass", "full_workflow_path", "gitUrl",
                 "name", "namespace", "organization", "private_access",
                 "providerUrl", "repository", "starredUsers", "toolname",
                 "tool_path", "topicAutomatic", "topicSelection", "verified",
-                "workflowName", "description", "workflowVersions",
-                # 新增字段
-                "categories.name", "categories.displayName",
-                "descriptor_type_versions", "engine_versions",
-                "input_file_formats.value", "output_file_formats.value",
-                "archived", "openData", "has_checker",
-                "verified_platforms", "execution_partners", "validation_partners"
+                "workflowName", "description", "workflowVersions"
             ],
             "sort": [
                 {"archived": {"order": "asc"}},
@@ -148,107 +102,61 @@ class DockstoreSearch:
                     "workflowVersions.sourceFiles.content": {},
                     "tags.sourceFiles.content": {},
                     "description": {},
-                    "labels.value": {},  # 更新为完整字段名
+                    "labels": {},
                     "all_authors.name": {},
                     "topicAutomatic": {},
                     "categories.topic": {},
-                    "categories.displayName": {},
-                    "categories.name": {},  # 新增高亮字段
-                    "input_file_formats.value": {},  # 新增高亮字段
-                    "output_file_formats.value": {}  # 新增高亮字段
+                    "categories.displayName": {}
                 }
             },
             "query": {
                 "bool": {
                     "must": [{"match": {"_index": "workflows"}}],
                     "should": [],
-                    "minimum_should_match": 1,
-                    "filter": []  # 添加过滤条件
+                    "minimum_should_match": 1
                 }
             }
         }
 
-        # 添加过滤条件
-        if descriptor_type:
-            search_body["query"]["bool"]["filter"].append(
-                {"term": {"descriptorType": descriptor_type}}
-            )
-            
-        if verified_only:
-            search_body["query"]["bool"]["filter"].append(
-                {"term": {"verified": True}}
-            )
-            
-        if not include_archived:
-            search_body["query"]["bool"]["filter"].append(
-                {"term": {"archived": False}}
-            )
-
-        # 处理查询条件
+        # Process query conditions
         for query in queries:
             terms = query.get("terms", [])
             fields = query.get("fields", [])
             
             for term, field in zip(terms, fields):
-                # 为搜索字段分配适当的权重
-                boost_value = 1.0
-                if field in ["full_workflow_path", "tool_path"]:
-                    boost_value = 14.0
-                elif field in ["description", "workflowName", "name"]:
-                    boost_value = 10.0
-                elif field in ["categories.name", "categories.displayName"]:
-                    boost_value = 8.0
-                elif field in ["all_authors.name", "organization"]:
-                    boost_value = 6.0
-                elif field in ["labels.value", "input_file_formats.value", "output_file_formats.value"]:
-                    boost_value = 4.0
-                else:
-                    boost_value = 2.0
-                
-                # 构建查询语句
                 if query_type == "wildcard":
                     search_body["query"]["bool"]["should"].append({
                         "wildcard": {
                             field: {
                                 "value": f"*{term}*",
                                 "case_insensitive": True,
-                                "boost": boost_value
+                                "boost": 14 if field in ["full_workflow_path", "tool_path"] else 2
                             }
                         }
                     })
-                else:  # match_phrase
-                    match_type = "match_phrase" if is_sentence else "match"
+                else:
                     search_body["query"]["bool"]["should"].append({
-                        match_type: {
+                        "match": {
                             field: {
                                 "query": term,
-                                "boost": boost_value
+                                "boost": 2
                             }
                         }
                     })
         
         return search_body
 
+    # 修改 dockstore_search.py 中的 search 方法
     async def search(
         self, 
         queries: List[Dict[str, Union[List[str], str]]], 
         is_sentence: bool = False,
-        query_type: str = "match_phrase",
-        descriptor_type: str = None,  # 新增参数
-        verified_only: bool = False,  # 新增参数
-        include_archived: bool = False  # 新增参数
+        query_type: str = "match_phrase"
     ) -> Optional[Dict[str, Any]]:
-        """Execute workflow search with enhanced filtering options."""
+        """Execute workflow search."""
         try:
             print(f"开始构建搜索查询: {queries}")
-            search_body = self._build_search_body(
-                queries, 
-                is_sentence, 
-                query_type,
-                descriptor_type,
-                verified_only,
-                include_archived
-            )
+            search_body = self._build_search_body(queries, is_sentence, query_type)
             print(f"搜索体构建完成, 准备发送请求")
             
             async with httpx.AsyncClient(timeout=30.0) as client:  # 设置30秒超时
@@ -274,8 +182,8 @@ class DockstoreSearch:
             traceback.print_exc()
             return None
 
-    def format_results(self, results: dict, output_full: bool = False) -> Union[str, List[str]]:
-        """Format search results as a concise list of links with enhanced information."""
+    def format_results(self, results: dict) -> str:
+        """Format search results as a concise list of links."""
         if not results or "hits" not in results:
             return "No matching workflows found"
         
@@ -294,66 +202,30 @@ class DockstoreSearch:
             desc = source.get('description', '')
             if desc:
                 desc = desc.split('\n')[0]
-                
-            # 增强信息
-            workflow_info = {
+            
+            workflows.append({
                 'name': name,
                 'path': path,
                 'desc': desc,
-                'score': score,
-                'descriptor_type': source.get('descriptorType', ''),
-                'categories': [cat.get('name', '') for cat in source.get('categories', [])],
-                'verified': source.get('verified', False),
-                'authors': [author.get('name', '') for author in source.get('all_authors', [])],
-                'organization': source.get('organization', ''),
-                'input_formats': [fmt.get('value', '') for fmt in source.get('input_file_formats', [])],
-                'output_formats': [fmt.get('value', '') for fmt in source.get('output_file_formats', [])]
-            }
-            
-            workflows.append(workflow_info)
+                'score': score
+            })
         
         workflows.sort(key=lambda x: x['score'], reverse=True)
         total_results = len(workflows)
         display_count = min(total_results, 5)
         
         if total_results > 5:
-            formatted.append(f"Found {total_results} workflows, showing top {display_count} by relevance:\n")
+            formatted.append(f"Found {total_results} workflows, showing top 5 by relevance:\n")
         else:
             formatted.append(f"Found {total_results} workflow(s):\n")
         
         for wf in workflows[:display_count]:
             url = f"https://dockstore.org/workflows/{wf['path']}"
-            base_info = f"- [{wf['name']}]({url}) (similarity: {wf['score']:.2f})"
-            
-            if wf['verified']:
-                base_info += " ✓"  # 添加验证标记
-                
-            formatted.append(base_info)
-            
-            # 添加描述和其他信息
+            formatted.append(f"- [{wf['name']}]({url}) (similarity: {wf['score']:.2f})")
             if wf['desc']:
-                formatted.append(f"  {wf['desc']}")
-                
-            if output_full:
-                if wf['descriptor_type']:
-                    formatted.append(f"  Type: {wf['descriptor_type']}")
-                if wf['categories']:
-                    formatted.append(f"  Categories: {', '.join(wf['categories'])}")
-                if wf['authors']:
-                    formatted.append(f"  Authors: {', '.join(wf['authors'])}")
-                if wf['organization']:
-                    formatted.append(f"  Organization: {wf['organization']}")
-                if wf['input_formats']:
-                    formatted.append(f"  Input formats: {', '.join(wf['input_formats'])}")
-                if wf['output_formats']:
-                    formatted.append(f"  Output formats: {', '.join(wf['output_formats'])}")
-                    
-            formatted.append("")  # 添加空行分隔
+                formatted.append(f"  {wf['desc']}\n")
         
-        if output_full:
-            return formatted
-        else:
-            return "\n".join(formatted)
+        return "\n".join(formatted)
 
 async def main():
     """Dockstore 工作流搜索工具
@@ -382,15 +254,6 @@ async def main():
     parser.add_argument('--outputfull',
                        action='store_true',
                        help='显示完整工作流信息')
-    parser.add_argument('--descriptor-type',
-                       choices=['WDL', 'CWL', 'NFL'],
-                       help='只返回指定描述符类型的工作流')
-    parser.add_argument('--verified-only',
-                       action='store_true',
-                       help='只返回已验证的工作流')
-    parser.add_argument('--include-archived',
-                       action='store_true',
-                       help='包含已归档的工作流')
     
     args = parser.parse_args()
     client = DockstoreSearch()
@@ -412,15 +275,7 @@ async def main():
             return
             
         # 执行搜索
-        results = await client.search(
-            queries, 
-            args.sentence, 
-            args.type,
-            args.descriptor_type,  # 新增
-            args.verified_only,    # 新增
-            args.include_archived  # 新增
-        )
-        
+        results = await client.search(queries, args.sentence)
         if not results or "hits" not in results or not results["hits"].get("hits"):
             print("未找到相关工作流")
             return
