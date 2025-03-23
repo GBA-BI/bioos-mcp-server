@@ -1,9 +1,0 @@
-{
-  "name": "",
-  "description": "Comprehensive preprocessing for 10X Genomics CellPlex multiplexed single-cell RNA-seq data. Processes Cell Multiplexing Oligo (CMO) FASTQ files with CITE-seq-Count including required CellPlex-specific translation steps. Simultaneously processes gene expression FASTQ files with STARsolo and DropletUtils for alignment and cell filtering, and formats outputs for seamless import into Seurat/Scanpy (Read10X function).",
-  "organization": "iwc-workflows",
-  "full_path": "github.com/iwc-workflows/fastq-to-matrix-10x/scrna-seq-fastq-to-matrix-10x-cellplex",
-  "file_count": 0,
-  "files": [],
-  "save_location": "/mnt/d/Project/MCP/bioos-mcp-server/src/workflows/cellplex/scrna-seq-fastq-to-matrix-10x-cellplex"
-}
