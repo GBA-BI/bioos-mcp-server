@@ -13,6 +13,40 @@
 
 本指南提供了使用 Bio-OS MCP 工具进行工作流开发的完整流程和最佳实践。
 
+## 1.3.1 WDL 工作流查询
+- 使用 Dockstore 搜索配置（DockstoreSearchConfig）查询工作流
+  * terms: 搜索词列表，如 ["WGS", "variant calling"]
+  * fields: 搜索字段列表，如 ["description", "full_workflow_path"]
+  * operator: 搜索逻辑，"AND"（所有词都匹配）或"OR"（任一词匹配）
+  * query_type: 匹配方式，"match_phrase"（精确匹配）或"wildcard"（模糊匹配）
+  * sentence: 是否将搜索词作为完整句子处理（布尔值）
+  示例：
+  {"config":{
+            query=[
+                ["description", "AND", "SNP CNV workflow WGS variant calling"],
+                ["description", "OR", "tumor normal paired somatic variant"],
+                ["descriptor-type", "AND", "WDL"]
+            ],
+            query_type="match_phrase",
+            sentence=True,
+            output_full=True
+    }
+  }
+- 使用 search_dockstore 工具执行查询
+- 分析搜索结果，选择合适的工作流
+- 查询结果为空时，建议用户自行开发工作流
+
+## 1.3.2 WDL 工作流下载
+- 使用 Dockstore 下载配置（DockstoreDownloadConfig）下载选定的工作流
+  * full_workflow_path: 完整的工作流路径，如 "github.com/broadinstitute/wdl-workflows/gatk"
+  * output_path: 保存工作流文件的本地目录
+- 使用 fetch_wdl_from_dockstore 工具下载工作流文件
+- 下载后自动验证 WDL 语法
+- 如需修改，确保遵循以下原则：
+  * 保留原有文件结构
+  * 记录所有修改，便于追溯
+  * 更新文档以反映修改内容
+
 ## 2. WDL 工作流开发流程
 
 ### 2.1 WDL 脚本开发
@@ -164,4 +198,4 @@ Docker 镜像构建流程：
 ### 4.4 安全性
 - 妥善保管 AK/SK
 - 定期更新密钥
-- 遵循最小权限原则 
+- 遵循最小权限原则

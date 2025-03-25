@@ -4,3 +4,7 @@
 """
 
 __version__ = "0.0.4"
+
+# 从工具模块导入类
+from bioos_mcp.tools.dockstore_search import DockstoreSearch
+from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
