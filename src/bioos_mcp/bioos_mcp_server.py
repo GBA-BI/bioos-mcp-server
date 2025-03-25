@@ -567,13 +567,8 @@ async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
 # ===== Dockstore Tools =====
 @mcp.tool()
 async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
-    """Search for workflows in Dockstore
-    
-    Args:
-        config: Search configuration including query list, query_type, sentence and output options
-        
-    Returns:
-        Dict[str, Any]: Search results containing matching workflows
+    """
+      在Dockstore中检索工作流
     """
     try:
         # 添加调试信息
@@ -646,13 +641,8 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
 
 @mcp.tool()
 async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str, Any]:
-    """Download workflow files from Dockstore
-    
-    Args:
-        config: Download configuration including workflow URL and save location
-        
-    Returns:
-        Dict[str, Any]: Download results with save location and file list
+    """
+    从Dockstore下载工作流
     """
     # Create downloader client
     downloader = DockstoreDownloader()
@@ -764,10 +754,6 @@ def docker_build_prompt() -> str:
 @mcp.tool()
 async def generate_dockerfile(config: DockerfileConfig) -> str:
     """生成用于构建生物信息工具的 Dockerfile
-    
-    Args:
-        config: Dockerfile 生成配置
-        context: MCP 工具上下文，包含用户的当前工作目录
     """
     try:
         output_path = config.output_path
