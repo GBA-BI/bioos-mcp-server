@@ -1,46 +1,38 @@
-"""Dockstore Workflow Downloader
+"""
+Dockstore Workflow Downloader
 
-A standalone tool for downloading workflow files from Dockstore. 
-Supports multiple workflow path formats and custom save locations.
+This tool downloads workflows from Dockstore based on a URL.
+It maintains the original directory structure of the workflow files.
 
-Basic Usage:
-   # Linux/macOS Terminal
-   python fetch_wdl_from_dockstore.py \
-       --full_workflow_path "github.com/broadinstitute/TAG-public/CNV-Profiler" \
-       --results_dir "/path/to/workflows"
+Usage:
+    python fetch_wdl_from_dockstore.py <workflow_url> [output_dir]
 
-Supported Path Formats:
-    1. Dockstore URL:
-       https://dockstore.org/workflows/github.com/broadinstitute/TAG-public/CNV-Profiler
+Examples:
+    # 下载工作流到当前目录
+    python fetch_wdl_from_dockstore.py https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq
 
-    2. GitHub Path:
-       github.com/broadinstitute/TAG-public/CNV-Profiler
-
-    3. Short Path:
-       broadinstitute/TAG-public/CNV-Profiler
-
-Arguments:
-    --full_workflow_path: Workflow path (supports all formats above)
-    --results_dir: Directory for saving workflow files (created if not exists)
-
-Output Files:
-    1. Workflow Description Files (*.wdl, *.cwl)
-    2. Input Parameter Files (*.json)
+    # 下载工作流到指定目录
+    python fetch_wdl_from_dockstore.py https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq ./workflows
 """
 
-from typing import Any, Dict, List, Optional, Union
-from pathlib import Path
-from uuid import uuid4
+import os
+import sys
+import json
+import re
 import argparse
 import asyncio
 import httpx
-import json
-import os
+import datetime
+from typing import Dict, List, Optional, Any, Tuple
+from pathlib import Path
+from urllib.parse import urlparse
+from uuid import uuid4
+
 
 class DockstoreDownloader:
-    """Dockstore workflow download client"""
+    """Dockstore workflow downloader client."""
     
-    API_BASE = "https://dockstore.org/api/api/ga4gh/v2/extended/tools/entry/_search"
+    BASE_URL = "https://dockstore.miracle.ac.cn/api"
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -48,165 +40,352 @@ class DockstoreDownloader:
     )
 
     def __init__(self) -> None:
-        """Initialize downloader"""
-        self.search_url = self.API_BASE
+        """Initialize the DockstoreDownloader client."""
         self.headers = {
-            "accept": "application/json",
-            "accept-language": "en-US,en;q=0.9",
-            "content-type": "application/json",
-            "origin": "https://dockstore.org",
-            "user-agent": self.USER_AGENT,
-            "x-dockstore-ui": "2.13.3",
-            "x-request-id": str(uuid4()),
-            "x-session-id": str(uuid4())
+            "Accept": "application/json",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Connection": "keep-alive",
+            "User-Agent": self.USER_AGENT,
+            "X-Request-ID": str(uuid4()),
         }
-
-    def _build_search_body(self, workflow_path: str) -> Dict[str, Any]:
-        """Build search request body"""
-        return {
-            "size": 1,
-            "_source": [
-                "full_workflow_path", "name", "description", 
-                "organization", "workflowVersions"
-            ],
-            "query": {
-                "bool": {
-                    "must": [
-                        {"match": {"_index": "workflows"}},
-                        {"match_phrase": {"full_workflow_path": workflow_path}}
-                    ]
-                }
-            }
-        }
-
-    async def find_workflow(self, workflow_path: str) -> Optional[Dict[str, Any]]:
-        """Find workflow by path
+    
+    @staticmethod
+    def parse_workflow_url(url: str) -> Tuple[Optional[str], Optional[str]]:
+        """Parse organization and workflow name from a Dockstore URL."""
+        # 处理完整URL
+        if url.startswith(('http://', 'https://')):
+            parsed = urlparse(url)
+            path = parsed.path
+        else:
+            # 处理只有路径部分的URL
+            path = url
         
-        Supports the following formats:
-        1. github.com/org/repo/workflow
-        2. org/repo/workflow
-        3. https://dockstore.org/workflows/github.com/org/repo/workflow
-        """
-        # Handle Dockstore URL
-        if workflow_path.startswith(("http://", "https://")):
-            if "/workflows/" in workflow_path:
-                # Extract workflow path
-                path_parts = workflow_path.split("/workflows/")
-                if len(path_parts) > 1:
-                    workflow_path = path_parts[1]
-                    # Remove github.com/ prefix if present
-                    if workflow_path.startswith("github.com/"):
-                        workflow_path = workflow_path.replace("github.com/", "", 1)
+        # 移除 /workflows/ 前缀 (如果存在)
+        if '/workflows/' in path:
+            path = path.split('/workflows/')[-1]
         
-        # Ensure path doesn't start with github.com/
-        if workflow_path.startswith("github.com/"):
-            workflow_path = workflow_path.replace("github.com/", "", 1)
+        # 提取组织和工作流名
+        parts = path.strip('/').split('/')
         
-        # Build search request
-        search_body = self._build_search_body(f"github.com/{workflow_path}")
+        # 格式可能有多种:
+        # 1. git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq
+        # 2. github.com/broadinstitute/gatk-sv/module00c-metrics
+        # 3. gzlab/mrnaseq/mRNAseq
         
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    self.search_url,
-                    json=search_body,
-                    headers=self.headers,
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                results = response.json()
+        if len(parts) >= 3:
+            # 判断第一部分是否包含域名 (.com, .cn, .org 等)
+            if any(domain in parts[0] for domain in ['.com', '.cn', '.org', '.io', '.net']):
+                # 域名后面的部分通常是组织名
+                org = parts[1]
+                # 工作流名是最后一部分
+                workflow_name = parts[-1]
+            else:
+                # 如果没有域名，则第一部分是组织名
+                org = parts[0]
+                # 工作流名是最后一部分
+                workflow_name = parts[-1]
                 
-                if results.get("hits", {}).get("hits"):
-                    # Save raw JSON results with full path
-                    result_path = os.path.abspath('dockstore_results.json')
-                    with open(result_path, 'w', encoding='utf-8') as f:
-                        json.dump(results, f, indent=2, ensure_ascii=False)
-                        print(f"\n结果文件已保存到: {result_path}")
-                    return results["hits"]["hits"][0]
-                return None
-                
-            except Exception as e:
-                print(f"Failed to find workflow: {e}")
-                if isinstance(e, httpx.HTTPError) and hasattr(e, 'response'):
-                    print(f"Response content: {e.response.text}")
-                return None
-
-    async def save_workflow_files(self, workflow: Dict, results_dir: str) -> Optional[str]:
-        """Save workflow files
+            print(f"成功解析 URL: 组织={org}, 工作流={workflow_name}")
+            return org, workflow_name
         
-        Args:
-            workflow (Dict): Workflow information
-            results_dir (str): Path to results directory (required)
-            
-        Returns:
-            Optional[str]: Absolute path to saved directory, None if failed
-        """
+        print(f"无法从URL '{url}' 解析组织名和工作流名")
+        return None, None
+
+    async def get_published_workflows(self, organization: str) -> Optional[List[Dict[str, Any]]]:
+        """Get all published workflows for an organization."""
+        url = f"{self.BASE_URL}/workflows/organization/{organization}/published"
+        print(f"查询组织 {organization} 的已发布工作流")
+        
         try:
-            source = workflow.get("_source", {})
-            workflow_path = source.get("full_workflow_path")
-            
-            if not workflow_path:
-                return None
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self.headers)
                 
-            # Create directory using provided results_dir
-            dir_name = Path(workflow_path).name
-            wdl_dir = Path(results_dir) / dir_name
-            wdl_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Collect and save WDL files
-            wdl_files = []
-
-            for version in source.get("workflowVersions", []):
-                for source_file in version.get("sourceFiles", []):
-                    file_path = source_file.get("path", "")
-                    content = source_file.get("content", "")
-                    
-                    if not (file_path and content):
-                        continue
-                        
-                    if file_path.endswith((".wdl", ".cwl")):
-                        wdl_files.append((file_path, content))
-                        # Save file to specified directory
-                        full_path = wdl_dir / Path(file_path).name
-                        with open(full_path, "w", encoding="utf-8") as f:
-                            f.write(content)
-                    else:
-                        print("选中的工作流没有可用的WDL格式程序")
-                        return {"error": "No WDL-formatted program is available for the selected workflow. Check the workflow configuration"}
+                if response.status_code != 200:
+                    print(f"查询已发布工作流失败，状态码: {response.status_code}")
+                    print(f"错误响应: {response.text}")
+                    return None
                 
-            return str(wdl_dir.absolute())
-            
+                result = response.json()
+                workflow_count = len(result)
+                print(f"找到 {workflow_count} 个已发布工作流")
+                return result
         except Exception as e:
-            print(f"Error saving files: {e}")
+            print(f"查询已发布工作流时出错: {str(e)}")
             return None
 
-async def main():
-    """Main function"""
-    parser = argparse.ArgumentParser(description='Download workflow files from Dockstore')
+    async def find_workflow_by_name(
+        self, workflows: List[Dict[str, Any]], workflow_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """Find a specific workflow by name from a list of workflows."""
+        if not workflows:
+            return None
+            
+        # 尝试直接匹配
+        matching_workflows = [
+            wf for wf in workflows 
+            if wf.get("workflowName") == workflow_name
+        ]
+        
+        # 如果没有直接匹配，尝试不区分大小写匹配
+        if not matching_workflows:
+            matching_workflows = [
+                wf for wf in workflows 
+                if wf.get("workflowName", "").lower() == workflow_name.lower()
+            ]
+        
+        # 如果仍没有匹配，尝试匹配 repository 名称
+        if not matching_workflows:
+            matching_workflows = [
+                wf for wf in workflows 
+                if wf.get("repository", "").lower() == workflow_name.lower()
+            ]
+            
+        # 尝试部分匹配名称
+        if not matching_workflows:
+            matching_workflows = [
+                wf for wf in workflows 
+                if workflow_name.lower() in wf.get("workflowName", "").lower() or
+                workflow_name.lower() in wf.get("repository", "").lower()
+            ]
+        
+        if not matching_workflows:
+            print(f"未找到名为 {workflow_name} 的工作流")
+            print("可用的工作流:")
+            for wf in workflows[:10]:  # 只显示前10个
+                print(f"  - {wf.get('workflowName')} (存储库: {wf.get('repository')})")
+            return None
+        
+        # 如果有多个匹配项，使用最新的一个
+        if len(matching_workflows) > 1:
+            print(f"发现 {len(matching_workflows)} 个名为 {workflow_name} 的工作流，使用最新版本")
+            # 按照更新时间排序
+            matching_workflows.sort(
+                key=lambda x: x.get("lastUpdated", ""), 
+                reverse=True
+            )
+        
+        workflow = matching_workflows[0]
+        print(f"已找到工作流: ID={workflow.get('id')}, 路径={workflow.get('full_workflow_path')}")
+        return workflow
+
+    async def get_latest_workflow_version(
+        self, workflow: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Get the latest version of a workflow."""
+        workflow_versions = workflow.get("workflowVersions", [])
+        
+        if not workflow_versions:
+            print(f"工作流 {workflow.get('id')} 没有可用版本")
+            return None
+        
+        # 寻找最新的稳定版本，如果没有则使用最新的任意版本
+        stable_versions = [v for v in workflow_versions if v.get("valid", False)]
+        target_versions = stable_versions if stable_versions else workflow_versions
+        
+        # 按照更新时间排序
+        target_versions.sort(
+            key=lambda x: x.get("lastUpdated", ""),
+            reverse=True
+        )
+        
+        latest_version = target_versions[0]
+        print(f"使用工作流版本: ID={latest_version.get('id')}, 名称={latest_version.get('name')}")
+        return latest_version
+
+    async def get_source_files(
+        self, workflow_id: int, version_id: int
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Get source files for a specific workflow version."""
+        url = f"{self.BASE_URL}/workflows/{workflow_id}/workflowVersions/{version_id}/sourcefiles"
+        print(f"获取工作流 {workflow_id} 版本 {version_id} 的源文件")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self.headers)
+                
+                if response.status_code != 200:
+                    print(f"获取源文件失败，状态码: {response.status_code}")
+                    print(f"错误响应: {response.text}")
+                    return None
+                
+                result = response.json()
+                file_count = len(result)
+                print(f"找到 {file_count} 个源文件")
+                return result
+        except Exception as e:
+            print(f"获取源文件时出错: {str(e)}")
+            return None
+
+    async def download_workflow(
+        self, 
+        organization: str, 
+        workflow_name: str, 
+        output_dir: str
+    ) -> bool:
+        """Download a workflow based on organization and workflow name."""
+        # 1. 获取组织已发布的工作流
+        workflows = await self.get_published_workflows(organization)
+        if not workflows:
+            print(f"组织 {organization} 没有已发布的工作流")
+            return False
+        
+        # 2. 根据名称查找工作流
+        workflow = await self.find_workflow_by_name(workflows, workflow_name)
+        if not workflow:
+            return False
+        
+        # 3. 获取最新版本
+        latest_version = await self.get_latest_workflow_version(workflow)
+        if not latest_version:
+            return False
+        
+        # 4. 获取源文件
+        workflow_id = workflow.get("id")
+        version_id = latest_version.get("id")
+        if not workflow_id or not version_id:
+            print("找不到有效的工作流 ID 或版本 ID")
+            return False
+            
+        source_files = await self.get_source_files(workflow_id, version_id)
+        if not source_files:
+            return False
+        
+        # 5. 创建输出目录
+        base_output_dir = Path(output_dir)
+        workflow_output_dir = base_output_dir / f"{organization}_{workflow_name}"
+        workflow_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 6. 下载和保存文件
+        downloaded_count = 0
+        for file in source_files:
+            path = file.get("absolutePath", "")
+            content = file.get("content", "")
+            
+            if not path or not content:
+                continue
+            
+            # 去掉路径前面的斜杠，以便与输出目录正确组合
+            if path.startswith("/"):
+                path = path[1:]
+            
+            file_path = workflow_output_dir / path
+            
+            # 确保父目录存在
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # 写入文件内容
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                
+            downloaded_count += 1
+            print(f"已保存文件: {file_path}")
+
+        print(f"已成功下载 {downloaded_count} 个文件到 {workflow_output_dir}")
+        
+        # 7. 保存工作流元数据
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+        metadata = {
+            "organization": organization,
+            "workflowName": workflow_name,
+            "workflowId": workflow_id,
+            "versionId": version_id,
+            "versionName": latest_version.get("name"),
+            "fullWorkflowPath": workflow.get("full_workflow_path"),
+            "descriptorType": workflow.get("descriptorType", ""),
+            "downloadDate": current_time
+        }
+        
+        metadata_path = workflow_output_dir / "workflow_metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            
+        print(f"已保存工作流元数据到 {metadata_path}")
+        return True
     
-    parser.add_argument('--full_workflow_path', 
-                       required=True,
-                       help='Full workflow path (e.g., github.com/broadinstitute/warp/...)')
-    parser.add_argument('--results_dir',
-                       required=True,
-                       help='Path to workflow files save directory')
+    async def download_workflow_from_url(
+        self,
+        url: str,
+        output_dir: str
+    ) -> bool:
+        """Download a workflow based on its URL."""
+        # 解析URL，获取组织和工作流名称
+        organization, workflow_name = self.parse_workflow_url(url)
+        
+        if not organization or not workflow_name:
+            print(f"无法从URL解析组织和工作流名称: {url}")
+            print("请确保URL格式正确，例如: https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq")
+            return False
+        
+        print(f"从URL解析出: 组织={organization}, 工作流={workflow_name}")
+        
+        # 使用解析出的组织和工作流名称下载
+        return await self.download_workflow(organization, workflow_name, output_dir)
+
+
+async def main():
+    """Main function for the Dockstore workflow downloader."""
+    parser = argparse.ArgumentParser(description='Dockstore 工作流下载工具')
+    
+    # 简化参数 - 只需要 URL 和输出目录
+    parser.add_argument('url', help='工作流 URL (例如: https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq)')
+    parser.add_argument('output_dir', nargs='?', default='.', help='输出目录路径 (默认为当前目录)')
     
     args = parser.parse_args()
+    
     downloader = DockstoreDownloader()
     
-    try:
-        print(f"\nSearching for workflow: {args.full_workflow_path}")
-        workflow = await downloader.find_workflow(args.full_workflow_path)
+    # 直接使用 URL 下载
+    success = await downloader.download_workflow_from_url(args.url, args.output_dir)
+    
+    if success:
+        print("工作流下载成功!")
+        return 0
+    else:
+        print("工作流下载失败!")
+        return 1
+
+
+# 支持 MCP 服务器调用的入口点
+async def download_from_mcp(config):
+    """MCP server entry point for Dockstore workflow download."""
+    downloader = DockstoreDownloader()
+    
+    url = config.get("url")
+    output_path = config.get("output_path", ".")
+    
+    if not url:
+        return {"error": "必须提供 URL 参数"}
+    
+    success = await downloader.download_workflow_from_url(url, output_path)
+    
+    if not success:
+        return {"error": "工作流下载失败，请检查 URL 或网络连接"}
+    
+    # 解析组织和工作流名称，以获取保存路径
+    org, workflow_name = downloader.parse_workflow_url(url)
+    if not org or not workflow_name:
+        return {"error": "无法从 URL 解析组织和工作流名称"}
         
-        if not workflow:
-            print("Workflow not found")
-            return
-            
-        print("\nStarting workflow download...")
-        save_dir = await downloader.save_workflow_files(workflow, args.results_dir)
-            
-    except Exception as e:
-        print(f"Execution error: {str(e)}")
+    save_dir = Path(output_path) / f"{org}_{workflow_name}"
+    
+    # 获取已下载的文件列表
+    files = []
+    for root, _, filenames in os.walk(save_dir):
+        for filename in filenames:
+            file_path = Path(root) / filename
+            rel_path = file_path.relative_to(save_dir)
+            files.append(str(rel_path))
+    
+    return {
+        "success": True + "\n",
+        "save_directory": str(save_dir) + "\n",
+        "organization": org +"\n",
+        "workflow_name": workflow_name +"\n",
+        "files": files
+    }
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    result = asyncio.run(main())
+    sys.exit(result)

@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -149,8 +150,8 @@ class DockstoreSearchConfig:
 @dataclass
 class DockstoreDownloadConfig:
     """Dockstore workflow download configuration"""
-    full_workflow_path: str  # Full workflow path or URL
-    output_path: str  # Directory path for saving workflow files
+    url: str  # Workflow URL or path
+    output_path: str = "."  # Directory path for saving workflow files
 
 
 # ----- Docker 相关配置 -----
@@ -648,7 +649,7 @@ async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str,
     """Download workflow files from Dockstore
     
     Args:
-        config: Download configuration including workflow path and save location
+        config: Download configuration including workflow URL and save location
         
     Returns:
         Dict[str, Any]: Download results with save location and file list
@@ -656,17 +657,38 @@ async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str,
     # Create downloader client
     downloader = DockstoreDownloader()
     
-    # Find workflow
-    workflow = await downloader.find_workflow(config.full_workflow_path)
-    if not workflow:
-        return {"error": "Workflow not found"}
-    
-    # Download and save files
-    save_dir = await downloader.save_workflow_files(workflow, config.output_path)
-    if not save_dir:
-        return {"error": "Failed to save workflow files"}
-    
-    return save_dir
+    try:
+        # 使用新的 URL 解析和下载方法
+        success = await downloader.download_workflow_from_url(config.url, config.output_path)
+        
+        if not success:
+            return {"error": "工作流下载失败，请检查 URL 或网络连接"}
+        
+        # 解析组织和工作流名称，以获取保存路径
+        org, workflow_name = downloader.parse_workflow_url(config.url)
+        if not org or not workflow_name:
+            return {"error": "无法从 URL 解析组织和工作流名称"}
+            
+        save_dir = Path(config.output_path) / f"{org}_{workflow_name}"
+        
+        # 获取已下载的文件列表
+        files = []
+        for root, _, filenames in os.walk(save_dir):
+            for filename in filenames:
+                file_path = Path(root) / filename
+                rel_path = file_path.relative_to(save_dir)
+                files.append(str(rel_path))
+        
+        return {
+            "success": True,
+            "save_directory": str(save_dir),
+            "organization": org,
+            "workflow_name": workflow_name,
+            "files": files
+        }
+    except Exception as e:
+        import traceback
+        return {"error": f"下载过程中发生错误: {str(e)}\n{traceback.format_exc()}"}
 
 
 # 在适当位置添加这个提示函数
@@ -683,8 +705,8 @@ def dockstore_search_prompt() -> str:
        - 每个查询条件为一个3元素数组: [字段, 匹配类型, 搜索词]
        - 示例: 
          [
-           ["description", "AND", "SNP CNV workflow WGS variant calling"],
-           ["description", "OR", "tumor normal paired somatic variant"]
+            ["organization", "AND", "broadinstitute"],
+            ["descriptorType", "AND", "WDL"]
          ]
 
     2. 查询类型 (query_type) [可选]
@@ -695,16 +717,11 @@ def dockstore_search_prompt() -> str:
        - 默认值: false
        - 设为 true 时将搜索词作为完整句子处理
 
-    4. 完整输出 (output_full) [可选]
-       - 默认值: false
-       - 设为 true 时返回完整搜索结果，包括所有元数据
-
     示例查询:
     {
         "query": [
-            ["description", "AND", "SNP CNV workflow WGS variant calling"],
-            ["description", "OR", "tumor normal paired somatic variant"],
-            ["descriptor-type", "AND", "WDL"]
+            [ ["organization", "AND", "broadinstitute"],
+            ["descriptorType", "AND", "WDL"]
         ],
         "query_type": "match_phrase",
         "sentence": true
