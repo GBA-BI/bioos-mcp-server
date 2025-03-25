@@ -4,13 +4,16 @@
 """
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import requests
 from mcp.server.fastmcp import FastMCP
+from bioos_mcp.tools.dockstore_search import DockstoreSearch
+from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
 
 # 创建 MCP 服务器，不设置连接超时时间
 mcp = FastMCP("Bio-OS-MCP-Server")
@@ -106,6 +109,49 @@ class WorkflowInputValidateConfig:
     """工作流输入验证配置"""
     wdl_path: str  # WDL 文件路径
     input_json: str  # 输入 JSON 文件路径
+
+# ----- Dockstore 相关配置 -----
+
+# 定义支持的搜索字段及其说明
+ALLOWED_FIELDS = {
+    "full_workflow_path": "工作流完整路径",  # 用于精确定位工作流
+    "description": "工作流描述",            # 搜索工作流描述
+    "name": "工作流名称",                  # 搜索工作流名称
+    "author": "作者名称",                  # 搜索作者
+    "organization": "组织名称",            # 搜索组织
+    "labels": "工作流标签",                # 搜索标签
+    "content": "工作流源文件内容"          # 搜索源文件内容
+}
+
+# 定义查询相关的常量
+ALLOWED_QUERY_TYPES = ["match_phrase", "wildcard"]  # 支持的查询类型
+DEFAULT_QUERY_TYPE = "match_phrase"                 # 默认查询类型
+
+@dataclass
+class DockstoreSearchConfig:
+    """Dockstore 搜索配置类
+    用于定义和验证搜索参数
+    """
+    query: List[List[str]] = field(default_factory=list)  # 搜索条件列表 [field, match_type, term]
+    query_type: str = DEFAULT_QUERY_TYPE  # 查询类型
+    sentence: bool = False    # 是否作为句子搜索
+    output_full: bool = False # 是否输出完整结果
+    get_files: str = None    # 获取特定工作流文件的路径
+
+    def __post_init__(self):
+        """配置验证方法
+        确保提供了必要的搜索参数并验证查询类型
+        """
+        if not self.query and not self.get_files:
+            raise ValueError("必须提供搜索条件或工作流路径")
+        if self.query_type not in ALLOWED_QUERY_TYPES:
+            raise ValueError(f"不支持的查询类型: {self.query_type}")
+
+@dataclass
+class DockstoreDownloadConfig:
+    """Dockstore workflow download configuration"""
+    url: str  # Workflow URL or path
+    output_path: str = "."  # Directory path for saving workflow files
 
 
 # ----- Docker 相关配置 -----
@@ -518,6 +564,159 @@ async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
     return "\n".join(output)
 
 
+# ===== Dockstore Tools =====
+@mcp.tool()
+async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
+    """
+      在Dockstore中检索工作流
+    """
+    try:
+        # 添加调试信息
+        print(f"接收到的查询配置: {config}")
+        
+        # 验证输入参数
+        if not hasattr(config, 'query'):
+            return {"error": f"配置对象缺少 'query' 属性，请确保使用正确的参数格式"}
+            
+        if not isinstance(config.query, list):
+            return {"error": f"'query' 必须是列表类型，实际类型: {type(config.query)}"}
+        
+        # 创建 Dockstore 搜索客户端
+        client = DockstoreSearch()
+        
+        # 处理查询参数格式
+        queries = []
+        try:
+            for query_item in config.query:
+                # 预期格式: [field, match_type, term]
+                print()
+                if isinstance(query_item, list) and len(query_item) == 3:
+                    field, match_type, term = query_item
+                    queries.append({
+                        "terms": [term],
+                        "fields": [field],
+                        #"operator": (str(match_type) if isinstance(match_type, str) and 
+                        #str(match_type).upper() in ["AND", "OR"] else "AND")
+                        "operator": match_type if match_type in ["AND", "OR"] else "AND"
+                    })
+                else:
+                    print(f"跳过无效的查询项: {query_item}，预期是一个包含3个元素的列表")
+        except Exception as e:
+            return {"error": f"处理查询项时出错: {str(e)}"}
+        
+        if not queries:
+            return {"error": "没有有效的查询条件，请检查输入格式"}
+            
+        # 添加超时处理
+        import asyncio
+        try:
+            # 设置60秒超时
+            print(f"开始执行搜索，参数: queries={queries}, sentence={config.sentence}, query_type={config.query_type}")
+            results = await asyncio.wait_for(
+                client.search(queries, config.sentence, config.query_type),
+                timeout=60
+            )
+            print("搜索完成，处理结果")
+        except asyncio.TimeoutError:
+            return {"error": "搜索操作超时（60秒）"}
+        
+        if not results:
+            return {"error": "搜索未返回结果"}
+            
+        if isinstance(results, dict) and "error" in results:
+            return results
+            
+        if "hits" not in results:
+            return {"error": "未找到匹配的工作流"}
+            
+        # 格式化结果
+        formatted_results = client.format_results(results)
+        return formatted_results
+
+    except Exception as e:
+        import traceback
+        trace_str = traceback.format_exc()
+        return {"error": f"搜索失败: {str(e)}\n{trace_str}"}
+
+
+@mcp.tool()
+async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str, Any]:
+    """
+    从Dockstore下载工作流
+    """
+    # Create downloader client
+    downloader = DockstoreDownloader()
+    
+    try:
+        # 使用新的 URL 解析和下载方法
+        success = await downloader.download_workflow_from_url(config.url, config.output_path)
+        
+        if not success:
+            return {"error": "工作流下载失败，请检查 URL 或网络连接"}
+        
+        # 解析组织和工作流名称，以获取保存路径
+        org, workflow_name = downloader.parse_workflow_url(config.url)
+        if not org or not workflow_name:
+            return {"error": "无法从 URL 解析组织和工作流名称"}
+            
+        save_dir = Path(config.output_path) / f"{org}_{workflow_name}"
+        
+        # 获取已下载的文件列表
+        files = []
+        for root, _, filenames in os.walk(save_dir):
+            for filename in filenames:
+                file_path = Path(root) / filename
+                rel_path = file_path.relative_to(save_dir)
+                files.append(str(rel_path))
+        
+        return {
+            "success": True,
+            "save_directory": str(save_dir),
+            "organization": org,
+            "workflow_name": workflow_name,
+            "files": files
+        }
+    except Exception as e:
+        import traceback
+        return {"error": f"下载过程中发生错误: {str(e)}\n{traceback.format_exc()}"}
+
+
+# 在适当位置添加这个提示函数
+
+@mcp.prompt()
+def dockstore_search_prompt() -> str:
+    """生成 Dockstore 搜索提示模板"""
+    return """
+    Dockstore 工作流搜索指南：
+
+    请提供以下搜索参数：
+
+    1. 查询条件列表 (query)
+       - 每个查询条件为一个3元素数组: [字段, 匹配类型, 搜索词]
+       - 示例: 
+         [
+            ["organization", "AND", "broadinstitute"],
+            ["descriptorType", "AND", "WDL"]
+         ]
+
+    2. 查询类型 (query_type) [可选]
+       - 默认值: "match_phrase" (精确短语匹配)
+       - 可选值: "wildcard" (通配符匹配，会在搜索词前后添加*)
+
+    3. 句子模式 (sentence) [可选]
+       - 默认值: false
+       - 设为 true 时将搜索词作为完整句子处理
+
+    示例查询:
+    {
+        "query": [
+            [ ["organization", "AND", "broadinstitute"],
+            ["descriptorType", "AND", "WDL"]
+        ],
+        "query_type": "match_phrase",
+        "sentence": true
+    }
+    """
 # ===== Docker 镜像工具 =====
 # ----- Docker 构建提示 -----
 @mcp.prompt()
@@ -555,14 +754,9 @@ def docker_build_prompt() -> str:
 @mcp.tool()
 async def generate_dockerfile(config: DockerfileConfig) -> str:
     """生成用于构建生物信息工具的 Dockerfile
-    
-    Args:
-        config: Dockerfile 生成配置
-        context: MCP 工具上下文，包含用户的当前工作目录
     """
     try:
         output_path = config.output_path
-
         # 生成 conda channels 配置命令
         channels_config = ' && \\\n    '.join(
             f'conda config --add channels {channel}'
@@ -573,22 +767,21 @@ async def generate_dockerfile(config: DockerfileConfig) -> str:
 
         # 生成 Dockerfile 内容
         dockerfile_content = f"""FROM continuumio/miniconda3
+            # 设置工作目录
+            WORKDIR /app
 
-# 设置工作目录
-WORKDIR /app
+            # 配置 Conda channels 并创建独立环境
+            RUN {channels_config} && \\
+                conda config --set channel_priority strict && \\
+                conda create -n {config.tool_name} python={config.python_version} {packages_list} -y && \\
+                conda clean -afy
 
-# 配置 Conda channels 并创建独立环境
-RUN {channels_config} && \\
-    conda config --set channel_priority strict && \\
-    conda create -n {config.tool_name} python={config.python_version} {packages_list} -y && \\
-    conda clean -afy
+            # 将环境路径添加到系统 PATH
+            ENV PATH /opt/conda/envs/{config.tool_name}/bin:$PATH
 
-# 将环境路径添加到系统 PATH
-ENV PATH /opt/conda/envs/{config.tool_name}/bin:$PATH
-
-# 设置默认命令
-CMD ["/bin/bash"]
-"""
+            # 设置默认命令
+            CMD ["/bin/bash"]
+            """
 
         # 写入 Dockerfile
         with open(output_path, 'w') as f:
@@ -599,6 +792,7 @@ CMD ["/bin/bash"]
         return f"Dockerfile 生成失败: {str(e)}"
     except Exception as e:
         return f"生成 Dockerfile 时出错: {str(e)}"
+
 
 
 @mcp.tool()
@@ -635,7 +829,6 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
     # 移除 timeout 参数
     response = requests.get(f"http://10.20.16.38:3001/build/status/{task_id}")
     return response.json()
-
 
 if __name__ == "__main__":
     mcp.run()
