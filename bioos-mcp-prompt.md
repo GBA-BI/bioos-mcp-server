@@ -1,5 +1,7 @@
 # Bio-OS MCP 工作流开发指南
 
+本指南提供了使用 Bio-OS MCP 工具进行工作流开发的完整流程和最佳实践，给出了 LLM Agent 在收到终端用户的开发指令后使用 Bio-OS MCP Server 提供的各项工具时的通用原则，如无用户刻意强调，请严格按照以下原则和流程执行。
+
 ## 1. 基本原则
 
 ### 1.1 路径使用规范
@@ -11,79 +13,15 @@
 - 所有的用户交互必须使用中文
 - 保持专业术语的准确性和一致性
 
-本指南提供了使用 Bio-OS MCP 工具进行工作流开发的完整流程和最佳实践。
+### 1.3 环境变量约定
+- 和 Bio-OS 交互时所需要的 ak，sk 和 workflow_name 这三个变量值请优先从所处操作系统的环境变量中获取，注意环境变量中变量名可能会存在细微差异，如 ak 的变量名为 AK 或者 Access_key，请妥善处理
+- 如所处操作系统的环境变量中没有对应的值，则需要询问用户提供
 
 ## 2. WDL 工作流开发流程
+以下章节给出了开发 WDL 流程并完成在 Bio-OS 平台上分析的完整流程。当终端用户提出要进行一次开发实践时，请依次按照以下章节的顺序引导用户完成完整流程。如果用户提供了中间步骤的材料，如提供了已写好的 WDL 脚本，或者提供了 Docker image 的 URL，则可以直接使用用户提供的材料，跳过对应的步骤，但仍需要引导用户完成后续的步骤。
 
-### 2.1 WDL 脚本开发
-- 根据需求分析，确定工作流程的各个步骤
-- 为每个步骤创建对应的 task
-- 每个 task 需包含:
-  * input 部分：定义输入参数
-    - 对于文件类型的输入，必须使用 File 类型而不是 String
-    - 禁止使用 String 类型传递文件路径，这可能导致云环境下的路径解析错误
-    - 示例：
-      √ File input_bam
-      × String bam_path
-  * command 部分：具体的执行命令
-  * output 部分：定义输出结果
-    - 输出文件同样必须使用 File 类型
-    - 确保输出文件的路径是相对于工作目录的
-  * runtime 部分：指定运行环境要求
-    - docker 镜像：必须由用户显式指定，不提供默认值
-      * 示例：
-        runtime {
-          docker: "${docker_image}"  # 通过 workflow 的输入参数指定
-        }
-    - 内存大小 (默认: 8 GB)
-    - 磁盘大小 (默认: 20 GB)
-    - CPU 核数 (默认: 4)
-- 使用 workflow 部分组织 task 的执行顺序
-
-### 2.2 WDL 脚本验证
-- 使用 validate_wdl 工具验证语法
-- 修复验证过程中发现的问题
-- 重复验证直到通过
-
-### 2.3 工作流上传
-- 准备工作流描述信息
-- 使用 import_workflow 工具上传到 Bio-OS
-- 使用 check_workflow_import_status 查询导入状态
-  * 等待 WDL 语法验证完成
-  * 确认导入成功
-- 如果导入失败，根据错误信息修改 WDL 文件并重试
-
-### 2.4 Docker 镜像准备
-- 为每个 task 准备对应的 Dockerfile
-- 遵循以下规则：
-  * 优先使用 Miniconda 作为基础镜像
-  * 使用 conda 安装生物信息软件
-  * 创建独立的 conda 环境
-- 使用 build_docker_image 构建镜像
-- 使用 check_build_status 监控构建进度
-- 确保所有镜像构建成功
-
-### 2.5 输入模板生成
-- 使用 generate_inputs_json_template 生成模板
-- 查看生成的模板，了解需要提供的参数
-
-### 2.6 输入文件准备
-- 根据实际需求修改输入参数，优先向用户询问
-- 确保所有必需参数都已填写
-- 确保文件路径等参数正确
-- 使用 validate_workflow_input_json 验证修改后的输入文件
-
-### 2.7 工作流执行与监控
-- 使用 submit_workflow 提交工作流
-- 使用 check_workflow_status 监控执行进度
-  * 定期查询任务状态
-  * 等待执行完成
-- 如果执行失败：
-  * 使用 get_workflow_logs 获取详细的执行日志
-  * 分析日志中的错误信息
-  * 根据错误信息修改相关配置
-  * 重新提交直到成功或决定终止
-### 2.8 WDL 工作流查询
+### 2.1 WDL 工作流检索
+- 用户提供一个开发任务时，请首先询问用户是否需要检索 Dockstore 中是否已有这方面的流程，如用户选择需要，则进行这一步的 WDL 工作流检索
 - 使用 search_dockstore 工具配置搜索配置（DockstoreSearchConfig）查询工作流：  
   - 查询条件 -q/--query: 指定一个包含三个元素的列表 [搜索字段, 布尔操作符,搜索词]
     * 搜索字段: 在哪个字段中搜索，如 description, full_workflow_path, organization 等
@@ -114,7 +52,7 @@
       "query": [
         ["description", "AND", "WGS"],
         ["description", "AND", "variant calling"],
-        ["organization", "OR","broadinstitute"]
+        ["organization", "OR","gzlab"]
       ],
       "query_type": "match_phrase",
       "sentence": false,
@@ -122,12 +60,14 @@
       "output_full": true
     }
   }
+- 默认情况下请只查询["organization", "AND", "gzlab"]下的 WDL 流程
 - 给用户列出检索返回的列表，供用户查看并选择
 - 查询结果为空时，建议用户自行开发工作流
 
-### 2.9 WDL 工作流下载
+### 2.2 WDL 工作流下载
+- 如用户确认上一步的检索结果中有其需要的 WDL 流程，则在这一步中触发 WDL 工作流下载
 - 使用 fetch_wdl_from_dockstore 工具下载 Dockstore 平台上的已有工作流
--配置下载参数（DockstoreDownloadConfig）：
+- 配置下载参数（DockstoreDownloadConfig）：
   - url: Dockstore 上工作流的完整URL
     * 格式: https://dockstore.miracle.ac.cn/workflows/{组织路径}/{工作流名称}
     * 示例: https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq
@@ -144,6 +84,76 @@
   下载失败：检查网络连接和权限设置
   WDL验证失败：可能需要修改工作流以适应您的环境
 
+### 2.3 WDL 脚本开发
+- 如用户要求新开发，或者上步的检索结果中没有其需要的 WDL 流程时，进行 WDL 脚本开发
+- 根据需求分析，确定工作流程的各个步骤
+- 为每个步骤创建对应的 task
+- 每个 task 需包含:
+  * input 部分：定义输入参数
+    - 对于文件类型的输入，必须使用 File 类型而不是 String
+    - 禁止使用 String 类型传递文件路径，这可能导致云环境下的路径解析错误
+    - 示例：
+      √ File input_bam
+      × String bam_path
+  * command 部分：具体的执行命令
+  * output 部分：定义输出结果
+    - 输出文件同样必须使用 File 类型
+    - 确保输出文件的路径是相对于工作目录的
+  * runtime 部分：指定运行环境要求
+    - docker 镜像：必须由用户显式指定，不提供默认值
+      * 示例：
+        runtime {
+          docker: "${docker_image}"  # 通过 workflow 的输入参数指定
+        }
+    - 内存大小 (默认: 8 GB)
+    - 磁盘大小 (默认: 20 GB)
+    - CPU 核数 (默认: 4)
+- 使用 workflow 部分组织 task 的执行顺序
+- 请将 WDL 的所有内容生成在一个 WDL 脚本文件中
+
+### 2.4 WDL 脚本验证
+- 使用 validate_wdl 工具验证语法
+- 修复验证过程中发现的问题
+- 重复验证直到通过
+
+### 2.5 工作流上传
+- 准备工作流描述信息
+- 使用 import_workflow 工具上传到 Bio-OS
+- 使用 check_workflow_import_status 查询导入状态
+  * 等待 WDL 语法验证完成
+  * 确认导入成功
+- 如果导入失败，根据错误信息修改 WDL 文件并重试
+
+### 2.6 Docker 镜像准备
+- 如用户未提供 task 要使用的 docker image 的 URL，则为每个 task 准备对应的 Dockerfile
+- 遵循以下规则：
+  * 优先使用 Miniconda 作为基础镜像
+  * 使用 conda 安装生物信息软件
+  * 创建独立的 conda 环境
+- 使用 build_docker_image 构建镜像
+- 使用 check_build_status 监控构建进度
+- 确保所有镜像构建成功
+
+### 2.7 输入模板生成
+- 使用 generate_inputs_json_template 生成模板
+- 查看生成的模板，了解需要提供的参数
+
+### 2.8 输入文件准备
+- 根据实际需求修改输入参数，优先向用户询问
+- 确保所有必需参数都已填写
+- 确保文件路径等参数正确
+- 使用 validate_workflow_input_json 验证修改后的输入文件
+
+### 2.9 工作流执行与监控
+- 使用 submit_workflow 提交工作流
+- 使用 check_workflow_status 监控执行进度
+  * 定期查询任务状态
+  * 等待执行完成
+- 如果执行失败：
+  * 使用 get_workflow_logs 获取详细的执行日志
+  * 分析日志中的错误信息
+  * 根据错误信息修改相关配置
+  * 重新提交直到成功或决定终止
 
 ## 3. 配置参数说明
 
@@ -223,6 +233,4 @@ Docker 镜像构建流程：
 - 建立问题排查和解决流程
 
 ### 4.4 安全性
-- 妥善保管 AK/SK
-- 定期更新密钥
 - 遵循最小权限原则
