@@ -60,7 +60,7 @@
       "output_full": true
     }
   }
-- 默认情况下请只查询["organization", "AND", "gzlab"]下的 WDL 流程
+- 默认情况下请只查询["organization", "AND", "gzlab"]下的 WDL 流程，并根据用户提供的信息构建其他的 query 元组，如"description"相关信息
 - 给用户列出检索返回的列表，供用户查看并选择
 - 查询结果为空时，建议用户自行开发工作流
 
