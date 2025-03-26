@@ -83,6 +83,67 @@
   * 分析日志中的错误信息
   * 根据错误信息修改相关配置
   * 重新提交直到成功或决定终止
+### 2.8 WDL 工作流查询
+- 使用 search_dockstore 工具配置搜索配置（DockstoreSearchConfig）查询工作流：  
+  - 查询条件 -q/--query: 指定一个包含三个元素的列表 [搜索词, 搜索字段, 布尔操作符]
+    * 搜索词: 需要查找的关键字或短语
+    * 搜索字段: 在哪个字段中搜索，如 description, full_workflow_path, organization 等
+    * 布尔操作符: AND（必须匹配所有词）或 OR（匹配任一词）
+    * 查询类型 --type:
+  - match_phrase: 精确匹配（默认）
+  - wildcard: 通配符模式（支持 * 匹配任意字符）
+  - 筛选选项:
+    * descriptor-type: 指定描述符类型（WDL, CWL, NFL）
+    * verified-only: 仅显示已验证的工作流
+    * sentence: 将搜索词作为完整句子处理
+    * outputfull: 显示详细工作流信息
+  - 可检索字段
+    * description: 工作流描述
+    * full_workflow_path: 完整工作流路径
+    * name: 工作流名称
+    * workflowName: 工作流显示名称
+    * organization: 组织名称
+    * all_authors.name: 作者姓名
+    * categories.name: 工作流类别
+    * input_file_formats.value: 输入文件格式
+    * output_file_formats.value: 输出文件格式
+
+  示例：
+  {
+    "config": {
+      "query": [
+        ["description", "AND", "WGS"],
+        ["description", "AND", "variant calling"],
+        ["organization", "OR","broadinstitute"]
+      ],
+      "query_type": "match_phrase",
+      "sentence": false,
+      "descriptor_type": "WDL",
+      "output_full": true
+    }
+  }
+- 给用户列出检索返回的列表，供用户查看并选择
+- 查询结果为空时，建议用户自行开发工作流
+
+### 2.9 WDL 工作流下载
+- 使用 fetch_wdl_from_dockstore 工具下载 Dockstore 平台上的已有工作流
+-配置下载参数（DockstoreDownloadConfig）：
+  - url: Dockstore 上工作流的完整URL
+    * 格式: https://dockstore.miracle.ac.cn/workflows/{组织路径}/{工作流名称}
+    * 示例: https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq
+  - output_path: 保存工作流文件的本地目录
+    * 默认为当前目录
+    * 建议使用绝对路径以避免路径解析问题
+- 下载后处理工作流：
+    * 使用 validate_wdl 工具验证WDL语法
+    * 按需修改工作流，保留原始作者和许可信息
+
+- 常见问题排查：
+  URL格式不正确：确保包含完整的组织和工作流信息
+  工作流未找到：检查组织名和工作流名是否正确
+  下载失败：检查网络连接和权限设置
+  WDL验证失败：可能需要修改工作流以适应您的环境
+
 
 ## 3. 配置参数说明
 
@@ -164,4 +225,4 @@ Docker 镜像构建流程：
 ### 4.4 安全性
 - 妥善保管 AK/SK
 - 定期更新密钥
-- 遵循最小权限原则 
+- 遵循最小权限原则
