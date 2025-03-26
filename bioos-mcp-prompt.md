@@ -85,10 +85,10 @@
   * 重新提交直到成功或决定终止
 ### 2.8 WDL 工作流查询
 - 使用 search_dockstore 工具配置搜索配置（DockstoreSearchConfig）查询工作流：  
-  - 查询条件 -q/--query: 指定一个包含三个元素的列表 [搜索词, 搜索字段, 布尔操作符]
-    * 搜索词: 需要查找的关键字或短语
+  - 查询条件 -q/--query: 指定一个包含三个元素的列表 [搜索字段, 布尔操作符,搜索词]
     * 搜索字段: 在哪个字段中搜索，如 description, full_workflow_path, organization 等
     * 布尔操作符: AND（必须匹配所有词）或 OR（匹配任一词）
+    * 搜索词: 需要查找的关键字或短语
     * 查询类型 --type:
   - match_phrase: 精确匹配（默认）
   - wildcard: 通配符模式（支持 * 匹配任意字符）
