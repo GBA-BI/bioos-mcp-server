@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 
 import requests
 from mcp.server.fastmcp import FastMCP
+
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
 
@@ -110,33 +111,36 @@ class WorkflowInputValidateConfig:
     wdl_path: str  # WDL 文件路径
     input_json: str  # 输入 JSON 文件路径
 
+
 # ----- Dockstore 相关配置 -----
 
 # 定义支持的搜索字段及其说明
 ALLOWED_FIELDS = {
     "full_workflow_path": "工作流完整路径",  # 用于精确定位工作流
-    "description": "工作流描述",            # 搜索工作流描述
-    "name": "工作流名称",                  # 搜索工作流名称
-    "author": "作者名称",                  # 搜索作者
-    "organization": "组织名称",            # 搜索组织
-    "labels": "工作流标签",                # 搜索标签
-    "content": "工作流源文件内容"          # 搜索源文件内容
+    "description": "工作流描述",  # 搜索工作流描述
+    "name": "工作流名称",  # 搜索工作流名称
+    "author": "作者名称",  # 搜索作者
+    "organization": "组织名称",  # 搜索组织
+    "labels": "工作流标签",  # 搜索标签
+    "content": "工作流源文件内容"  # 搜索源文件内容
 }
 
 # 定义查询相关的常量
 ALLOWED_QUERY_TYPES = ["match_phrase", "wildcard"]  # 支持的查询类型
-DEFAULT_QUERY_TYPE = "match_phrase"                 # 默认查询类型
+DEFAULT_QUERY_TYPE = "match_phrase"  # 默认查询类型
+
 
 @dataclass
 class DockstoreSearchConfig:
     """Dockstore 搜索配置类
     用于定义和验证搜索参数
     """
-    query: List[List[str]] = field(default_factory=list)  # 搜索条件列表 [field, match_type, term]
+    query: List[List[str]] = field(
+        default_factory=list)  # 搜索条件列表 [field, match_type, term]
     query_type: str = DEFAULT_QUERY_TYPE  # 查询类型
-    sentence: bool = False    # 是否作为句子搜索
-    output_full: bool = False # 是否输出完整结果
-    get_files: str = None    # 获取特定工作流文件的路径
+    sentence: bool = False  # 是否作为句子搜索
+    output_full: bool = False  # 是否输出完整结果
+    get_files: str = None  # 获取特定工作流文件的路径
 
     def __post_init__(self):
         """配置验证方法
@@ -146,6 +150,7 @@ class DockstoreSearchConfig:
             raise ValueError("必须提供搜索条件或工作流路径")
         if self.query_type not in ALLOWED_QUERY_TYPES:
             raise ValueError(f"不支持的查询类型: {self.query_type}")
+
 
 @dataclass
 class DockstoreDownloadConfig:
@@ -398,6 +403,8 @@ async def compose_input_json(config: WorkflowInputParams) -> str:
         missing_params = []
         invalid_params = []
         for key, value in template.items():
+            if "optional" in value:
+                continue
             if key not in config.params:
                 missing_params.append(key)
             elif not isinstance(config.params[key], type(value)):
@@ -573,17 +580,17 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
     try:
         # 添加调试信息
         print(f"接收到的查询配置: {config}")
-        
+
         # 验证输入参数
         if not hasattr(config, 'query'):
             return {"error": f"配置对象缺少 'query' 属性，请确保使用正确的参数格式"}
-            
+
         if not isinstance(config.query, list):
             return {"error": f"'query' 必须是列表类型，实际类型: {type(config.query)}"}
-        
+
         # 创建 Dockstore 搜索客户端
         client = DockstoreSearch()
-        
+
         # 处理查询参数格式
         queries = []
         try:
@@ -595,40 +602,42 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
                     queries.append({
                         "terms": [term],
                         "fields": [field],
-                        #"operator": (str(match_type) if isinstance(match_type, str) and 
+                        #"operator": (str(match_type) if isinstance(match_type, str) and
                         #str(match_type).upper() in ["AND", "OR"] else "AND")
-                        "operator": match_type if match_type in ["AND", "OR"] else "AND"
+                        "operator":
+                        match_type if match_type in ["AND", "OR"] else "AND"
                     })
                 else:
                     print(f"跳过无效的查询项: {query_item}，预期是一个包含3个元素的列表")
         except Exception as e:
             return {"error": f"处理查询项时出错: {str(e)}"}
-        
+
         if not queries:
             return {"error": "没有有效的查询条件，请检查输入格式"}
-            
+
         # 添加超时处理
         import asyncio
         try:
             # 设置60秒超时
-            print(f"开始执行搜索，参数: queries={queries}, sentence={config.sentence}, query_type={config.query_type}")
-            results = await asyncio.wait_for(
-                client.search(queries, config.sentence, config.query_type),
-                timeout=60
+            print(
+                f"开始执行搜索，参数: queries={queries}, sentence={config.sentence}, query_type={config.query_type}"
             )
+            results = await asyncio.wait_for(client.search(
+                queries, config.sentence, config.query_type),
+                                             timeout=60)
             print("搜索完成，处理结果")
         except asyncio.TimeoutError:
             return {"error": "搜索操作超时（60秒）"}
-        
+
         if not results:
             return {"error": "搜索未返回结果"}
-            
+
         if isinstance(results, dict) and "error" in results:
             return results
-            
+
         if "hits" not in results:
             return {"error": "未找到匹配的工作流"}
-            
+
         # 格式化结果
         formatted_results = client.format_results(results)
         return formatted_results
@@ -640,27 +649,29 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str, Any]:
+async def fetch_wdl_from_dockstore(
+        config: DockstoreDownloadConfig) -> Dict[str, Any]:
     """
     从Dockstore下载工作流
     """
     # Create downloader client
     downloader = DockstoreDownloader()
-    
+
     try:
         # 使用新的 URL 解析和下载方法
-        success = await downloader.download_workflow_from_url(config.url, config.output_path)
-        
+        success = await downloader.download_workflow_from_url(
+            config.url, config.output_path)
+
         if not success:
             return {"error": "工作流下载失败，请检查 URL 或网络连接"}
-        
+
         # 解析组织和工作流名称，以获取保存路径
         org, workflow_name = downloader.parse_workflow_url(config.url)
         if not org or not workflow_name:
             return {"error": "无法从 URL 解析组织和工作流名称"}
-            
+
         save_dir = Path(config.output_path) / f"{org}_{workflow_name}"
-        
+
         # 获取已下载的文件列表
         files = []
         for root, _, filenames in os.walk(save_dir):
@@ -668,7 +679,7 @@ async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str,
                 file_path = Path(root) / filename
                 rel_path = file_path.relative_to(save_dir)
                 files.append(str(rel_path))
-        
+
         return {
             "success": True,
             "save_directory": str(save_dir),
@@ -682,6 +693,7 @@ async def fetch_wdl_from_dockstore(config: DockstoreDownloadConfig) -> Dict[str,
 
 
 # 在适当位置添加这个提示函数
+
 
 @mcp.prompt()
 def dockstore_search_prompt() -> str:
@@ -717,6 +729,8 @@ def dockstore_search_prompt() -> str:
         "sentence": true
     }
     """
+
+
 # ===== Docker 镜像工具 =====
 # ----- Docker 构建提示 -----
 @mcp.prompt()
@@ -794,7 +808,6 @@ async def generate_dockerfile(config: DockerfileConfig) -> str:
         return f"生成 Dockerfile 时出错: {str(e)}"
 
 
-
 @mcp.tool()
 async def get_docker_image_url(config: DockerBuildConfig) -> str:
     """获取 Docker 镜像的完整 URL"""
@@ -829,6 +842,7 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
     # 移除 timeout 参数
     response = requests.get(f"http://10.20.16.38:3001/build/status/{task_id}")
     return response.json()
+
 
 if __name__ == "__main__":
     mcp.run()
