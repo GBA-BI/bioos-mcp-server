@@ -404,7 +404,10 @@ async def compose_input_json(config: WorkflowInputParams) -> str:
         invalid_params = []
         for key, value in template.items():
             if "optional" in value:
-                continue
+                if key not in config:
+                    del template[key]
+                    continue
+
             if key not in config.params:
                 missing_params.append(key)
             elif not isinstance(config.params[key], type(value)):
