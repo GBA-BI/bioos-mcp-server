@@ -14,12 +14,13 @@
 - 保持专业术语的准确性和一致性
 
 ### 1.3 环境变量约定
-- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请优先执行不附加变量参数的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
+- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请执行不带后续环境变量做为参数的裸的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
 
 ## 2. WDL 工作流开发流程
-以下章节给出了开发 WDL 流程并完成在 Bio-OS 平台上分析的完整流程。当终端用户提出要进行一次开发实践时，请按照以下章节的顺序引导用户完成从开发到上传再到提交运行的完整流程。如果用户提供了中间步骤的材料，如提供了已写好的 WDL 脚本，或者提供了 Docker image 的 URL，则可以直接使用用户提供的材料，跳过对应的步骤，但仍需要引导用户完成后续的步骤。在 WDL 中请始终使用 docker: "${docker_image}"的方式将 Task 中使用的 docker 镜像暴露到用户参数。引导用户提供或者开发每个需要的 docker 镜像。
+以下章节给出了开发 WDL 流程并完成在 Bio-OS 平台上分析的完整流程。当终端用户提出要进行一次开发实践时，请按照以下章节的顺序引导用户完成从开发到上传流程到输入文件构建再到提交运行的完整流程。如果用户提供了中间步骤的材料，如提供了已写好的 WDL 脚本，或者提供了 Docker image 的 URL，则可以直接使用用户提供的材料，跳过对应的步骤，但仍需要引导用户完成后续的步骤。在 WDL 中请始终使用 docker: "${docker_image}"的方式将 Task 中使用的 docker 镜像暴露到用户参数。引导用户提供或者开发每个需要的 docker 镜像。
 
 ### 2.1 WDL 工作流检索
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 用户提供一个开发任务时，请首先询问用户是否需要检索 Dockstore 中是否已有这方面的流程，如用户选择需要，则进行这一步的 WDL 工作流检索
 - 使用 search_dockstore 工具配置搜索配置（DockstoreSearchConfig）查询工作流：  
   - 查询条件 -q/--query: 指定一个包含三个元素的列表 [搜索字段, 布尔操作符,搜索词]
@@ -64,6 +65,7 @@
 - 查询结果为空时，建议用户自行开发工作流
 
 ### 2.2 WDL 工作流下载
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 如用户确认上一步的检索结果中有其需要的 WDL 流程，则在这一步中触发 WDL 工作流下载
 - 使用 fetch_wdl_from_dockstore 工具下载 Dockstore 平台上的已有工作流
 - 配置下载参数（DockstoreDownloadConfig）：
@@ -76,7 +78,7 @@
 - 下载后处理工作流：
     - 使用 `ls -R `命令 list下载到的文件或者文件夹，从中解析出 wdl 文件和 input.json文件的绝对路径
     - 使用 validate_wdl 工具验证WDL语法
-    - 引导用户使用利用下载到的 wdl 文件和 input.json文件向 Bio-OS 系统平台提交先上传工作流，然后再提交工作流运行
+    - 引导用户使用下载得到到的 wdl 文件和 input.json文件。先向 Bio-OS 系统平台提交上传wdl工作流，然后再 使用下载得到的input.json文件提交工作流运行
 
 - 常见问题排查：
   URL格式不正确：确保包含完整的组织和工作流信息
@@ -85,6 +87,7 @@
   WDL验证失败：可能需要修改工作流以适应您的环境
 
 ### 2.3 WDL 脚本开发
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 如用户要求新开发，或者上步的检索结果中没有其需要的 WDL 流程时，进行 WDL 脚本开发
 - 根据需求分析，确定工作流程的各个步骤
 - 为每个步骤创建对应的 task
@@ -112,47 +115,54 @@
 - 请将 WDL 的所有内容生成在一个 WDL 脚本文件中
 
 ### 2.4 WDL 脚本验证
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 使用 validate_wdl 工具验证语法
 - 修复验证过程中发现的问题
 - 重复验证直到通过
 
 ### 2.5 工作流上传
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 准备工作流描述信息
-- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请优先执行不附加变量参数的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
+- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，请优先使用你已记录下的获取到的信息，如你没有记录，请执行不带后续环境变量做为参数的裸的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
 - 使用 import_workflow 工具上传到 Bio-OS
-- 使用 check_workflow_import_status 查询导入状态
+- 使用 check_workflow_import_status 工具查询导入状态
   * 等待 WDL 语法验证完成
   * 确认导入成功
 - 如果导入失败，根据错误信息修改 WDL 文件并重试
 
 ### 2.6 Docker 镜像准备
+- 与 MCP 进行交互时，必须使用文件的绝对路径
 - 如用户未提供 task 要使用的 docker image 的 URL，则为每个 task 准备对应的 Dockerfile
 - 遵循以下规则：
   * 优先使用 Miniconda 作为基础镜像
   * 使用 conda 安装生物信息软件
   * 创建独立的 conda 环境
-- 使用 build_docker_image 构建镜像
-- 使用 check_build_status 监控构建进度
+- 使用 build_docker_image 工具构建镜像
+- 使用 check_build_status 工具监控构建进度
 - 确保所有镜像构建成功
 
 ### 2.7 输入模板生成
-- 使用 generate_inputs_json_template 生成模板
+- 与 MCP 进行交互时，必须使用文件的绝对路径
+- 使用 generate_inputs_json_template 工具生成模板
 - 查看生成的模板，了解需要提供的参数
 
 ### 2.8 输入文件准备
+- 与 MCP 进行交互时，必须使用文件的绝对路径
+- 根据 generate_inputs_json_template 工具生成的模板来准备包含实际运行参数的inputs.json文件
 - 根据实际需求修改输入参数，优先向用户询问
 - 确保所有必需参数都已填写
 - 确保文件路径等参数正确
-- 使用 validate_workflow_input_json 验证修改后的输入文件
+- 使用 validate_workflow_input_json 工具验证修改后的输入文件
 
 ### 2.9 工作流执行与监控
-- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请优先执行不附加变量参数的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
-- 使用 submit_workflow 提交工作流
-- 使用 check_workflow_status 监控执行进度
+- 与 MCP 进行交互时，必须使用文件的绝对路径
+- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，请优先使用你已记录下的获取到的信息，如你没有记录，请执行不带后续环境变量做为参数的裸的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
+- 使用 submit_workflow 工具提交工作流
+- 使用 check_workflow_status 工具监控执行进度
   * 定期查询任务状态
   * 等待执行完成
 - 如果执行失败：
-  * 使用 get_workflow_logs 获取详细的执行日志
+  * 使用 get_workflow_logs 工具获取详细的执行日志
   * 分析日志中的错误信息
   * 根据错误信息修改相关配置
   * 重新提交直到成功或决定终止
