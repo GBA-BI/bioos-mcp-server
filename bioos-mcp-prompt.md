@@ -14,7 +14,7 @@
 - 保持专业术语的准确性和一致性
 
 ### 1.3 环境变量约定
-- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请执行不带后续环境变量做为参数的裸的`printenv`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
+- 在需要用到和Bio-OS 交互时所需要的 ak，sk 和 workspace_name 这三个变量值时，如你没有记录，请优先执行不附加变量参数的`printenv | grep "MIRACLE"`命令，从输出结果环境变量中获取MIRACLE_ACCESS_KEY、MIRACLE_SECRET_KEY和MIRACLE_WORKSPACE_NAME做为ak，sk 和 workspace_name使用，注意不是MIRACLE_WORKSPACE_ID，如环境变量中不存在某个变量值时，再向用户询问。请妥善准确记住三个变量值，这三个值在整个交互生命周期中必须保持不变，不能也不准发生变化，供 tool调用时使用。
 
 ## 2. WDL 工作流开发流程
 以下章节给出了开发 WDL 流程并完成在 Bio-OS 平台上分析的完整流程。当终端用户提出要进行一次开发实践时，请按照以下章节的顺序引导用户完成从开发到上传流程到输入文件构建再到提交运行的完整流程。如果用户提供了中间步骤的材料，如提供了已写好的 WDL 脚本，或者提供了 Docker image 的 URL，则可以直接使用用户提供的材料，跳过对应的步骤，但仍需要引导用户完成后续的步骤。在 WDL 中请始终使用 docker: "${docker_image}"的方式将 Task 中使用的 docker 镜像暴露到用户参数。引导用户提供或者开发每个需要的 docker 镜像。
