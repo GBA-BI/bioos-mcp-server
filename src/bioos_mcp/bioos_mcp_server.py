@@ -8,8 +8,8 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
+from typing import Any, Dict, List, Tuple,Optional
+from pydantic import BaseModel, Field
 import requests
 from mcp.server.fastmcp import FastMCP
 
@@ -52,23 +52,25 @@ class WorkflowConfig:
 
 
 @dataclass
-class WorkflowImportConfig:
-    """工作流导入配置"""
-    ak: str
-    sk: str
-    workspace_name: str
-    workflow_name: str
-    workflow_source: str
-    workflow_desc: str
-
-
-@dataclass
 class WorkflowImportStatusConfig:
     """工作流导入状态查询配置"""
     ak: str
     sk: str
     workspace_name: str
     workflow_id: str
+
+class WorkflowImportConfig(BaseModel):
+    """工作流导入配置"""
+    ak: str = Field(..., description="Bio-OS 访问密钥")
+    sk: str = Field(..., description="Bio-OS 私钥")
+    workspace_name: str = Field(..., description="工作空间名称")
+    workflow_name: str = Field(..., description="工作流名称")
+    workflow_source: str = Field(..., description="WDL 源文件或目录的绝对路径")
+    workflow_desc: str = Field(..., description="工作流描述")
+    main_workflow_path: Optional[str] = Field(
+        default=None,
+        description="主 WDL 文件路径。当 workflow_source 是目录时必填，需指定主 WDL 文件的路径"
+    )
 
 
 @dataclass
@@ -320,7 +322,9 @@ async def validate_wdl(config: WDLValidateConfig) -> str:
 
 @mcp.tool()
 async def import_workflow(config: WorkflowImportConfig) -> str:
-    """上传 WDL 工作流到 Bio-OS 系统"""
+    """
+    该工具用于将 WDL 工作流上传到 Bio‑OS，支持上传单个文件或整个目录。
+    """
     cmd = [
         "bw_import", "--ak", config.ak, "--sk", config.sk, "--workspace_name",
         config.workspace_name, "--workflow_name", config.workflow_name,
@@ -328,6 +332,8 @@ async def import_workflow(config: WorkflowImportConfig) -> str:
         config.workflow_desc
     ]
 
+    if config.main_workflow_path:
+        cmd.extend(["--main_path", config.main_workflow_path])
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     # 同时返回 stderr 和 stdout 的内容
     output = []
