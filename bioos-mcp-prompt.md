@@ -132,6 +132,7 @@
   * 确认导入成功
 - 如果导入失败，根据错误信息修改 WDL 文件并重试
 
+
 ### 2.6 Docker 镜像准备
 - 与 MCP 进行交互时，必须使用文件的绝对路径
 - 如用户未提供 task 要使用的 docker image 的 URL，则为每个 task 准备对应的 Dockerfile

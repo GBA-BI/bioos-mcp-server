@@ -2,6 +2,7 @@
 
 这个模块实现了一个 MCP 服务器，提供了 Bio-OS 工作流管理和 Docker 镜像构建的功能。
 """
+
 from bioos_mcp.tools.rerank_client import RerankClient
 import json
 import os
@@ -17,7 +18,7 @@ from mcp.server.fastmcp import FastMCP
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
 from bioos.workflow_info import WorkflowInfo
-from bioos_mcp.tools.compose import build_inputs
+from bioos_mcp.tools.compose_tools import build_inputs
 import asyncio, functools
 
 
@@ -856,4 +857,5 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    print("mcp running")
     mcp.run()

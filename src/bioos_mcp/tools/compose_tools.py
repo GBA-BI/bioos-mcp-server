@@ -1,6 +1,7 @@
-# bioos_mcp/tools/compose.py
+# bioos_mcp/tools/compose_tools.py
 import json, re
 from typing import Any, Dict, List, Set, Tuple
+
 
 # ---------- 1. 解析 (optional [, default = xxx]) -----------------------
 _OPT_RE = re.compile(
