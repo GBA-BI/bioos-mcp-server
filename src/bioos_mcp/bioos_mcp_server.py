@@ -3,24 +3,34 @@
 这个模块实现了一个 MCP 服务器，提供了 Bio-OS 工作流管理和 Docker 镜像构建的功能。
 """
 
+from bioos_mcp.tools.rerank_client import RerankClient
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple,Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Tuple,Optional,Union
+from pydantic import BaseModel, Field, model_validator, field_validator
 import requests
 from mcp.server.fastmcp import FastMCP
 
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
+from bioos.workflow_info import WorkflowInfo
+from bioos_mcp.tools.compose_tools import build_inputs
+import asyncio, functools
+
 
 # 创建 MCP 服务器，不设置连接超时时间
 mcp = FastMCP("Bio-OS-MCP-Server")
 
 # 修改默认 runtime 配置，移除 docker 字段，因为它必须由用户指定
 DEFAULT_RUNTIME = {"memory": "8 GB", "disk": "20 GB", "cpu": 4}
+
+RERANKER = RerankClient(api_url="http://10.22.17.85:10802/rerank")
+TOP_N = 3        # 前 N 条
+
 
 
 # ===== 数据类定义 =====
@@ -59,6 +69,14 @@ class WorkflowImportStatusConfig:
     workspace_name: str
     workflow_id: str
 
+
+class BioosWorkflowJsonConfig(BaseModel):
+    "Bio-OS 上已导入 workflow 的 inputs.json 构建和任务投递"
+    ak: str = Field(..., description="Bio-OS 访问密钥")
+    sk: str = Field(..., description="Bio-OS 私钥")
+    workspace_name: str = Field(..., description="工作空间名称")
+    workflow_name: str = Field(..., description="工作流名称")
+
 class WorkflowImportConfig(BaseModel):
     """工作流导入配置"""
     ak: str = Field(..., description="Bio-OS 访问密钥")
@@ -92,19 +110,52 @@ class WorkflowLogsConfig:
     output_dir: str = "."  # 默认为当前目录
 
 
-@dataclass
-class WorkflowInputConfig:
-    """工作流输入配置"""
-    wdl_path: str
-    output_json: str
+class WorkflowInputParams(BaseModel):
+    """工作流输入参数配置（支持单/多样本 + 样本数量校验）"""
 
+    template_json: str = Field(..., description="模板 JSON 路径")
+    output_json: str   = Field(..., description="生成的 inputs.json 路径")
 
-@dataclass
-class WorkflowInputParams:
-    """工作流输入参数配置"""
-    template_json: str  # 模板 JSON 文件路径
-    output_json: str  # 输出 JSON 文件路径
-    params: Dict[str, Any]  # 用户提供的参数键值对
+    sample_count: int = Field(..., gt=0, description="用户声称的样本数量 (>=1)")
+
+    # 接受单样本 dict 或多样本 list[dict]
+    params: Union[Dict[str, Any], List[Dict[str, Any]]] = Field(
+        ..., description="单样本 dict 或多样本 list[dict]"
+    )
+
+    @model_validator(mode="before")
+    def _normalize_params(cls, values):
+        raw = values.get("params")
+        n = values.get("sample_count")
+
+        # --------- 单个 dict ---------
+        if isinstance(raw, dict):
+            values["params"] = [raw] * n
+            return values
+
+        # --------- list[dict] ---------
+        if isinstance(raw, list):
+            if len(raw) == n:  # 完整列表，直接用
+                return values
+            if len(raw) == 1 and n > 1:  # 仅 1 条 → 复制
+                values["params"] = raw * n
+                return values
+            raise ValueError(
+                f"样本数量不一致：sample_count={n}，但 params 中有 {len(raw)} 条"
+            )
+
+        raise TypeError("params 必须是 dict 或 list[dict]")
+
+    @field_validator("params", mode="after")
+    def _check_params_list(cls, v):
+        """
+        此时 v 一定已经是 list[dict]
+        """
+        if not isinstance(v, list):
+            raise TypeError("内部逻辑错误：params 应当被规范化为 list")
+        if not all(isinstance(item, dict) for item in v):
+            raise TypeError("params 中每个样本必须是 dict")
+        return v
 
 
 @dataclass
@@ -369,81 +420,25 @@ def workflow_input_prompt() -> str:
     """
 
 
-@mcp.tool()
-async def generate_inputs_json_template(config: WorkflowInputConfig) -> str:
-    """生成工作流输入 JSON 模板"""
-    # 使用 womtool 生成输入框架
-    cmd = ["womtool", "inputs", config.wdl_path]
+@mcp.tool(description="Bio-OS 上已导入 workflow 的 inputs.json 查询，并生成符合的输入参数模板")
+async def generate_inputs_json_template_bioos(cfg: BioosWorkflowJsonConfig) -> Dict[str, Any]:
     try:
-        result = subprocess.run(cmd,
-                                capture_output=True,
-                                text=True,
-                                check=True)
+        # 初始化 WorkflowInfo 并获取输入参数模板
+        workflow_info = WorkflowInfo(cfg.ak, cfg.sk)
+        inputs = workflow_info.get_workflow_inputs(cfg.workspace_name, cfg.workflow_name)
+        return inputs
+    except Exception as e:
+        return {"error": str(e)}
 
-        # 解析输入框架
-        input_template = json.loads(result.stdout)
-
-        # 生成示例输入文件
-        output_path = Path(config.output_json)
-        with open(output_path, 'w') as f:
-            json.dump(input_template, f, indent=2)
-
-        return f"成功生成输入模板文件：{output_path}"
-    except subprocess.CalledProcessError as e:
-        return f"womtool 执行失败: {e.stderr}"
-    except json.JSONDecodeError as e:
-        return f"JSON 解析失败: {str(e)}"
-    except IOError as e:
-        return f"文件写入失败: {str(e)}"
-
-
-@mcp.tool()
-async def compose_input_json(config: WorkflowInputParams) -> str:
-    """根据模板和用户参数生成工作流输入文件"""
-    try:
-        # 读取模板文件
-        with open(config.template_json, 'r') as f:
-            template = json.load(f)
-
-        # 验证用户提供的参数
-        missing_params = []
-        invalid_params = []
-        for key, value in template.items():
-            if "optional" in value:
-                if key not in config:
-                    del template[key]
-                    continue
-
-            if key not in config.params:
-                missing_params.append(key)
-            elif not isinstance(config.params[key], type(value)):
-                invalid_params.append(
-                    f"{key}: 期望类型 {type(value)}, 实际类型 {type(config.params[key])}"
-                )
-
-        if missing_params:
-            return f"缺少必需参数: {', '.join(missing_params)}"
-        if invalid_params:
-            return "参数类型不匹配:\n" + "\n".join(invalid_params)
-
-        # 更新模板中的参数
-        final_params = template.copy()
-        final_params.update(config.params)
-
-        # 写入输出文件
-        output_path = Path(config.output_json)
-        with open(output_path, 'w') as f:
-            json.dump(final_params, f, indent=2)
-
-        return f"成功生成工作流输入文件：{output_path}"
-
-    except FileNotFoundError:
-        return f"找不到模板文件: {config.template_json}"
-    except json.JSONDecodeError as e:
-        return f"模板文件 JSON 格式错误: {str(e)}"
-    except IOError as e:
-        return f"文件写入失败: {str(e)}"
-
+@mcp.tool(description="根据用户给的数值生成input.json")
+async def compose_input_json(cfg: WorkflowInputParams) -> str:
+    filled, err = build_inputs(cfg.template_json, cfg.params)
+    if err:
+        return "❌ 参数错误\n" + err
+    out = Path(cfg.output_json)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(filled, indent=2))
+    return f"✅ 已生成 {out}（{len(filled)} 个样本）"
 
 @mcp.tool()
 async def validate_workflow_input_json(
@@ -587,74 +582,68 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
       在Dockstore中检索工作流
     """
     try:
-        # 添加调试信息
-        print(f"接收到的查询配置: {config}")
+        if not isinstance(getattr(config, "query", None), list):
+            return {"error": "配置对象缺少合法 'query' 列表"}
 
-        # 验证输入参数
-        if not hasattr(config, 'query'):
-            return {"error": f"配置对象缺少 'query' 属性，请确保使用正确的参数格式"}
-
-        if not isinstance(config.query, list):
-            return {"error": f"'query' 必须是列表类型，实际类型: {type(config.query)}"}
-
-        # 创建 Dockstore 搜索客户端
+        #构造 ES 查询
         client = DockstoreSearch()
-
-        # 处理查询参数格式
         queries = []
-        try:
-            for query_item in config.query:
-                # 预期格式: [field, match_type, term]
-                print()
-                if isinstance(query_item, list) and len(query_item) == 3:
-                    field, match_type, term = query_item
-                    queries.append({
-                        "terms": [term],
-                        "fields": [field],
-                        #"operator": (str(match_type) if isinstance(match_type, str) and
-                        #str(match_type).upper() in ["AND", "OR"] else "AND")
-                        "operator":
-                        match_type if match_type in ["AND", "OR"] else "AND"
-                    })
-                else:
-                    print(f"跳过无效的查询项: {query_item}，预期是一个包含3个元素的列表")
-        except Exception as e:
-            return {"error": f"处理查询项时出错: {str(e)}"}
-
+        for item in config.query:
+            if isinstance(item, list) and len(item) == 3:
+                field, operator, term = item
+                queries.append({"terms": [term], "fields": [field],
+                                "operator": operator if operator in ("AND", "OR") else "AND"})
         if not queries:
-            return {"error": "没有有效的查询条件，请检查输入格式"}
+            return {"error": "没有有效的查询条件"}
 
-        # 添加超时处理
-        import asyncio
         try:
-            # 设置60秒超时
-            print(
-                f"开始执行搜索，参数: queries={queries}, sentence={config.sentence}, query_type={config.query_type}"
+            results = await asyncio.wait_for(
+                client.search(queries, config.sentence, config.query_type),
+                timeout=60
             )
-            results = await asyncio.wait_for(client.search(
-                queries, config.sentence, config.query_type),
-                                             timeout=60)
-            print("搜索完成，处理结果")
         except asyncio.TimeoutError:
-            return {"error": "搜索操作超时（60秒）"}
+            return {"error": "搜索操作超时（60 秒）"}
 
-        if not results:
-            return {"error": "搜索未返回结果"}
-
-        if isinstance(results, dict) and "error" in results:
-            return results
-
-        if "hits" not in results:
+        hits = results.get("hits", {}).get("hits", [])
+        if not hits:
             return {"error": "未找到匹配的工作流"}
 
-        # 格式化结果
-        formatted_results = client.format_results(results)
-        return formatted_results
+        texts = [
+            f"{h['_source'].get('workflowName') or h['_source'].get('name')} — "
+            f"{h['_source'].get('description', '')}"
+            for h in hits
+        ]
+        # 把用户关键词拼成一句自然查询
+        user_query = " ".join(term for q in config.query for term in (q[2],))
+
+        loop = asyncio.get_running_loop()
+        try:
+            reranked = await loop.run_in_executor(
+                None,
+                functools.partial(RERANKER.rerank,
+                                  query=user_query,
+                                  texts=texts,
+                                  top_n=TOP_N)
+            )
+        except RuntimeError as e:
+            # 若重排失败，降级用 ES 原排序
+            print(f"[WARN] Rerank 失败，降级为 ES 排序: {e}")
+            reranked = [{"index": i, "score": h["_score"]} for i, h in enumerate(hits[:TOP_N])]
+
+        # ---------- 5. 取回 top_n hits ----------
+        top_hits = [hits[item["index"]] for item in reranked]
+        top_results = {"hits": {"total": {"value": len(top_hits)}, "hits": top_hits}}
+
+
+        markdown = client.format_results(top_results, output_full=False)
+        pattern = re.compile(r"- \[(.*?)\]\((.*?)\)")
+        result_map = {match[0]: match[1] for match in pattern.findall(markdown)}
+
+        return {"results": result_map}
 
     except Exception as e:
         import traceback
-        trace_str = traceback.format_exc()
-        return {"error": f"搜索失败: {str(e)}\n{trace_str}"}
+        return {"error": f"搜索失败: {e}\n{traceback.format_exc()}"}
 
 
 @mcp.tool()
@@ -682,19 +671,33 @@ async def fetch_wdl_from_dockstore(
         save_dir = Path(config.output_path) / f"{org}_{workflow_name}"
 
         # 获取已下载的文件列表
-        files = []
+        all_files = []
         for root, _, filenames in os.walk(save_dir):
             for filename in filenames:
                 file_path = Path(root) / filename
-                rel_path = file_path.relative_to(save_dir)
-                files.append(str(rel_path))
+                all_files.append(str(file_path.resolve()))
+
+        # 自动检测 wdl 所在目录（不含子目录，且至少含一个 .wdl 文件）
+        wdl_dirs = []
+        for root, dirs, files in os.walk(save_dir):
+            if dirs:
+                continue  # 跳过有子目录的
+            if any(file.endswith(".wdl") for file in files):
+                wdl_dirs.append(Path(root).resolve())
+
+        if not wdl_dirs:
+            return {"error": "未找到包含 WDL 文件的目录"}
+
+        # 默认取第一个符合条件的目录
+        wdl_save_dir = wdl_dirs[0]
 
         return {
             "success": True,
-            "save_directory": str(save_dir),
+            "save_directory": str(save_dir.resolve()),
             "organization": org,
             "workflow_name": workflow_name,
-            "files": files
+            "files": all_files,
+            "wdl_save_directory": str(wdl_save_dir)
         }
     except Exception as e:
         import traceback
@@ -854,4 +857,5 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    print("mcp running")
     mcp.run()
