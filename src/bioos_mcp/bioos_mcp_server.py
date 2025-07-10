@@ -25,6 +25,9 @@ import asyncio, functools
 # 创建 MCP 服务器，不设置连接超时时间
 mcp = FastMCP("Bio-OS-MCP-Server")
 
+# 默认的 Bio-OS endpoint
+DEFAULT_ENDPOINT = "https://bio-top.miracle.ac.cn"
+
 # 修改默认 runtime 配置，移除 docker 字段，因为它必须由用户指定
 DEFAULT_RUNTIME = {"memory": "8 GB", "disk": "20 GB", "cpu": 4}
 
@@ -59,6 +62,7 @@ class WorkflowConfig:
     workspace_name: str
     workflow_name: str
     input_json: str
+    endpoint: str = DEFAULT_ENDPOINT
 
 
 @dataclass
@@ -68,6 +72,7 @@ class WorkflowImportStatusConfig:
     sk: str
     workspace_name: str
     workflow_id: str
+    endpoint: str = DEFAULT_ENDPOINT
 
 
 class BioosWorkflowJsonConfig(BaseModel):
@@ -76,6 +81,7 @@ class BioosWorkflowJsonConfig(BaseModel):
     sk: str = Field(..., description="Bio-OS 私钥")
     workspace_name: str = Field(..., description="工作空间名称")
     workflow_name: str = Field(..., description="工作流名称")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 class WorkflowImportConfig(BaseModel):
     """工作流导入配置"""
@@ -85,6 +91,7 @@ class WorkflowImportConfig(BaseModel):
     workflow_name: str = Field(..., description="工作流名称")
     workflow_source: str = Field(..., description="WDL 源文件或目录的绝对路径")
     workflow_desc: str = Field(..., description="工作流描述")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     main_workflow_path: Optional[str] = Field(
         default=None,
         description="主 WDL 文件路径。当 workflow_source 是目录时必填，需指定主 WDL 文件的路径"
@@ -98,6 +105,7 @@ class WorkflowStatusConfig:
     sk: str
     workspace_name: str
     submission_id: str
+    endpoint: str = DEFAULT_ENDPOINT
 
 
 @dataclass
@@ -107,6 +115,7 @@ class WorkflowLogsConfig:
     sk: str
     workspace_name: str
     submission_id: str
+    endpoint: str = DEFAULT_ENDPOINT
     output_dir: str = "."  # 默认为当前目录
 
 
@@ -377,8 +386,8 @@ async def import_workflow(config: WorkflowImportConfig) -> str:
     该工具用于将 WDL 工作流上传到 Bio‑OS，支持上传单个文件或整个目录。
     """
     cmd = [
-        "bw_import", "--ak", config.ak, "--sk", config.sk, "--workspace_name",
-        config.workspace_name, "--workflow_name", config.workflow_name,
+        "bw_import", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+        "--workspace_name", config.workspace_name, "--workflow_name", config.workflow_name,
         "--workflow_source", config.workflow_source, "--workflow_desc",
         config.workflow_desc
     ]
@@ -424,7 +433,7 @@ def workflow_input_prompt() -> str:
 async def generate_inputs_json_template_bioos(cfg: BioosWorkflowJsonConfig) -> Dict[str, Any]:
     try:
         # 初始化 WorkflowInfo 并获取输入参数模板
-        workflow_info = WorkflowInfo(cfg.ak, cfg.sk)
+        workflow_info = WorkflowInfo(cfg.ak, cfg.sk, cfg.endpoint)
         inputs = workflow_info.get_workflow_inputs(cfg.workspace_name, cfg.workflow_name)
         return inputs
     except Exception as e:
@@ -486,8 +495,8 @@ async def submit_workflow(config: WorkflowConfig) -> str:
     """提交并监控 Bio-OS 工作流"""
     try:
         cmd = [
-            "bw", "--ak", config.ak, "--sk", config.sk, "--workspace_name",
-            config.workspace_name, "--workflow_name", config.workflow_name,
+            "bw", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+            "--workspace_name", config.workspace_name, "--workflow_name", config.workflow_name,
             "--input_json", config.input_json
         ]
 
@@ -521,7 +530,7 @@ async def submit_workflow(config: WorkflowConfig) -> str:
 async def check_workflow_run_status(config: WorkflowStatusConfig) -> str:
     """查询工作流运行状态"""
     cmd = [
-        "bw_status_check", "--ak", config.ak, "--sk", config.sk,
+        "bw_status_check", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--submission_id",
         config.submission_id
     ]
@@ -540,7 +549,7 @@ async def check_workflow_import_status(
         config: WorkflowImportStatusConfig) -> str:
     """查询工作流导入状态"""
     cmd = [
-        "bw_import_status_check", "--ak", config.ak, "--sk", config.sk,
+        "bw_import_status_check", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--workflow_id",
         config.workflow_id
     ]
@@ -558,7 +567,7 @@ async def check_workflow_import_status(
 async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
     """获取工作流执行日志"""
     cmd = [
-        "get_submission_logs", "--ak", config.ak, "--sk", config.sk,
+        "get_submission_logs", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--submission_id",
         config.submission_id
     ]
