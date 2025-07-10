@@ -179,6 +179,11 @@ Once configured, you can begin development with Bio-OS MCP Server.
 Note: Prompts are currently not supported in Cline environment. These prompts are only available when using the MCP server directly or through Claude Desktop.
 
 
+## ✅ Certified by MCPHub  
+[![MCPHub Certified](https://img.shields.io/badge/Certified%20by-MCPHub-%2300aa00?style=flat&logo=bookstack)](https://mcphub.com/mcp-servers/GBA-BI/bioos-mcp-server)  
+This server is officially certified by [MCPHub](https://mcphub.com/mcp-servers/GBA-BI/bioos-mcp-server). Verify certification status on our MCPHub profile page.
+
+
 ## Contributing
 
 Issues and Pull Requests are welcome.
