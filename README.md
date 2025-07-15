@@ -39,7 +39,9 @@ Configure the Bio-OS MCP Server script path in CLINE's MCP settings. Replace the
         "path/to/bioos-mcp-server/src/bioos_mcp/bioos_mcp_server.py"
       ],
       "env": {
-        "PYTHONPATH": "path/to/bioos-mcp-server/src"
+        "PYTHONPATH": "path/to/bioos-mcp-server/src",
+        "ak": "xxxxxxxxxxxx",
+        "sk": "xxxxxxxxxxxx"
       }
     }
   }
@@ -68,9 +70,6 @@ For Miracle Cloud users, we provide a pre-configured Docker image with all Bio-O
 
 2. Navigate to CLINE's MCP configuration page and verify that Bio-OS MCP Server is properly connected. Use "Retry Connection" if needed:
 ![](figures/mcp_config.png)
-
-3. Since CLINE does not yet support MCP Prompts, copy the contents of `bioos-mcp-prompt.md` into CLINE's Custom Instructions for optimal experience:
-![](figures/instruction.png)
 
 Once configured, you can begin development with Bio-OS MCP Server.
 

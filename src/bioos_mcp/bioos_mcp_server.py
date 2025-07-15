@@ -35,6 +35,19 @@ RERANKER = RerankClient(api_url="http://10.22.17.85:10802/rerank")
 TOP_N = 3        # 前 N 条
 
 
+# 辅助函数：获取 ak、sk，用户输入优先
+def get_credentials(user_ak: Optional[str] = None, user_sk: Optional[str] = None) -> Tuple[str, str]:
+    """获取 ak、sk，用户输入优先于环境变量"""
+    ak = user_ak if user_ak is not None else os.getenv("ak")
+    sk = user_sk if user_sk is not None else os.getenv("sk")
+    
+    if not ak:
+        raise ValueError("未提供 ak，请设置环境变量 'ak' 或在参数中指定")
+    if not sk:
+        raise ValueError("未提供 sk，请设置环境变量 'sk' 或在参数中指定")
+    
+    return ak, sk
+
 
 # ===== 数据类定义 =====
 # ----- WDL 相关配置 -----
@@ -57,40 +70,40 @@ class WDLValidateConfig:
 @dataclass
 class WorkflowConfig:
     """工作流配置"""
-    ak: str
-    sk: str
     workspace_name: str
     workflow_name: str
     input_json: str
+    ak: Optional[str] = None
+    sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
 
 
 @dataclass
 class WorkflowImportStatusConfig:
     """工作流导入状态查询配置"""
-    ak: str
-    sk: str
     workspace_name: str
     workflow_id: str
+    ak: Optional[str] = None
+    sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
 
 
 class BioosWorkflowJsonConfig(BaseModel):
     "Bio-OS 上已导入 workflow 的 inputs.json 构建和任务投递"
-    ak: str = Field(..., description="Bio-OS 访问密钥")
-    sk: str = Field(..., description="Bio-OS 私钥")
     workspace_name: str = Field(..., description="工作空间名称")
     workflow_name: str = Field(..., description="工作流名称")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 class WorkflowImportConfig(BaseModel):
     """工作流导入配置"""
-    ak: str = Field(..., description="Bio-OS 访问密钥")
-    sk: str = Field(..., description="Bio-OS 私钥")
     workspace_name: str = Field(..., description="工作空间名称")
     workflow_name: str = Field(..., description="工作流名称")
     workflow_source: str = Field(..., description="WDL 源文件或目录的绝对路径")
     workflow_desc: str = Field(..., description="工作流描述")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     main_workflow_path: Optional[str] = Field(
         default=None,
@@ -101,20 +114,20 @@ class WorkflowImportConfig(BaseModel):
 @dataclass
 class WorkflowStatusConfig:
     """工作流运行状态查询配置"""
-    ak: str
-    sk: str
     workspace_name: str
     submission_id: str
+    ak: Optional[str] = None
+    sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
 
 
 @dataclass
 class WorkflowLogsConfig:
     """工作流日志获取配置"""
-    ak: str
-    sk: str
     workspace_name: str
     submission_id: str
+    ak: Optional[str] = None
+    sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
     output_dir: str = "."  # 默认为当前目录
 
@@ -379,14 +392,31 @@ async def validate_wdl(config: WDLValidateConfig) -> str:
     except Exception as e:
         return f"验证过程出现错误：{str(e)}"
 
+@mcp.tool(description="获取 AK/SK 环境变量状态")
+async def get_ak_and_execute() -> Dict[str, str]:
+    """
+    获取 AK/SK 环境变量状态。
+    """
+    ak = os.getenv("ak")
+    sk = os.getenv("sk")
+
+    return {
+        "ak": ak if ak else "未设置",
+        "sk": sk if sk else "未设置",
+        "status": "已设置" if (ak and sk) else "缺少必要的环境变量",
+        "note": "所有工具会优先使用用户输入的 ak/sk，如果用户未提供则使用环境变量"
+    }
 
 @mcp.tool()
 async def import_workflow(config: WorkflowImportConfig) -> str:
     """
     该工具用于将 WDL 工作流上传到 Bio‑OS，支持上传单个文件或整个目录。
     """
+    # 获取 ak、sk，用户输入优先于环境变量
+    ak, sk = get_credentials(config.ak, config.sk)
+
     cmd = [
-        "bw_import", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+        "bw_import", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--workflow_name", config.workflow_name,
         "--workflow_source", config.workflow_source, "--workflow_desc",
         config.workflow_desc
@@ -432,8 +462,11 @@ def workflow_input_prompt() -> str:
 @mcp.tool(description="Bio-OS 上已导入 workflow 的 inputs.json 查询，并生成符合的输入参数模板")
 async def generate_inputs_json_template_bioos(cfg: BioosWorkflowJsonConfig) -> Dict[str, Any]:
     try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        
         # 初始化 WorkflowInfo 并获取输入参数模板
-        workflow_info = WorkflowInfo(cfg.ak, cfg.sk, cfg.endpoint)
+        workflow_info = WorkflowInfo(ak, sk, cfg.endpoint)
         inputs = workflow_info.get_workflow_inputs(cfg.workspace_name, cfg.workflow_name)
         return inputs
     except Exception as e:
@@ -494,8 +527,11 @@ def workflow_submission_prompt() -> str:
 async def submit_workflow(config: WorkflowConfig) -> str:
     """提交并监控 Bio-OS 工作流"""
     try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(config.ak, config.sk)
+        
         cmd = [
-            "bw", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+            "bw", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
             "--workspace_name", config.workspace_name, "--workflow_name", config.workflow_name,
             "--input_json", config.input_json
         ]
@@ -529,8 +565,11 @@ async def submit_workflow(config: WorkflowConfig) -> str:
 @mcp.tool()
 async def check_workflow_run_status(config: WorkflowStatusConfig) -> str:
     """查询工作流运行状态"""
+    # 获取 ak、sk，用户输入优先于环境变量
+    ak, sk = get_credentials(config.ak, config.sk)
+    
     cmd = [
-        "bw_status_check", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+        "bw_status_check", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--submission_id",
         config.submission_id
     ]
@@ -548,8 +587,11 @@ async def check_workflow_run_status(config: WorkflowStatusConfig) -> str:
 async def check_workflow_import_status(
         config: WorkflowImportStatusConfig) -> str:
     """查询工作流导入状态"""
+    # 获取 ak、sk，用户输入优先于环境变量
+    ak, sk = get_credentials(config.ak, config.sk)
+    
     cmd = [
-        "bw_import_status_check", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+        "bw_import_status_check", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--workflow_id",
         config.workflow_id
     ]
@@ -566,8 +608,11 @@ async def check_workflow_import_status(
 @mcp.tool()
 async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
     """获取工作流执行日志"""
+    # 获取 ak、sk，用户输入优先于环境变量
+    ak, sk = get_credentials(config.ak, config.sk)
+    
     cmd = [
-        "get_submission_logs", "--ak", config.ak, "--sk", config.sk, "--endpoint", config.endpoint,
+        "get_submission_logs", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
         "--workspace_name", config.workspace_name, "--submission_id",
         config.submission_id
     ]
