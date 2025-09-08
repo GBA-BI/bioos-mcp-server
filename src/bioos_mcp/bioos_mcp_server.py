@@ -2,7 +2,10 @@
 
 这个模块实现了一个 MCP 服务器，提供了 Bio-OS 工作流管理和 Docker 镜像构建的功能。
 """
-
+from __future__ import annotations
+import subprocess, shutil, docker, uuid
+from pathlib import Path
+from typing import Dict, Any, Optional, Union
 from bioos_mcp.tools.rerank_client import RerankClient
 import json
 import os
@@ -13,12 +16,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple,Optional,Union
 from pydantic import BaseModel, Field, model_validator, field_validator
 import requests
+import yaml
 from mcp.server.fastmcp import FastMCP
 
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
 from bioos.workflow_info import WorkflowInfo
+from bioos.workspace_info import WorkspaceInfo
 from bioos_mcp.tools.compose_tools import build_inputs
+from bioos import bioos
 import asyncio, functools
 
 
@@ -87,6 +93,28 @@ class WorkflowImportStatusConfig:
     sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
 
+class BioosWorkspaceConfig(BaseModel):
+    """Bio-OS 工作空间创建配置"""
+    workspace_name: str = Field(..., description="要创建的工作空间名称")
+    workspace_description: str = Field(..., description="工作空间描述")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+class BioosBindClusterToWorkspace(BaseModel):
+    """Bio-OS 工作空间绑定集群"""
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    workspace_id: str = Field(..., description="要绑定集群的工作空间 ID")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+class BioosS3FileUploader(BaseModel):
+    """Bio-OS S3文件上传器"""
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    workspace_id: str = Field(..., description="目标工作空间 ID")
+    local_file_path: str = Field(..., description="本地文件路径")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 class BioosWorkflowJsonConfig(BaseModel):
     "Bio-OS 上已导入 workflow 的 inputs.json 构建和任务投递"
@@ -628,6 +656,84 @@ async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
         output.append(result.stderr)
     return "\n".join(output)
 
+
+@mcp.tool(description="Bio-OS 创建新工作空间")
+async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+
+        # 初始化 WorkspaceInfo 并创建工作空间
+        workspace_info = WorkspaceInfo(ak, sk, cfg.endpoint)
+        result = workspace_info.create_workspace(
+            name=cfg.workspace_name,
+            description=cfg.workspace_description
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+@mcp.tool(description="Bio-OS工作空间绑定集群")
+async def bind_cluster_to_workspace(cfg:BioosBindClusterToWorkspace) -> Dict[str,Any]:
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        # 初始化 WorkspaceInfo 并创建工作空间
+        workspace_info = WorkspaceInfo(ak, sk, cfg.endpoint)
+        result = workspace_info.bind_cluster_to_workspace(cfg.workspace_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+@mcp.tool(description="上传__dashboard__.ipynb文件到指定工作空间的S3桶")
+async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
+    """
+    上传__dashboard__.ipynb文件到指定工作空间的S3桶
+    """
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+
+        # 检查本地文件是否存在
+        if not os.path.exists(cfg.local_file_path):
+            return {"error": f"本地文件不存在: {cfg.local_file_path}"}
+
+        # 检查文件名是否为__dashboard__.ipynb
+        filename = os.path.basename(cfg.local_file_path)
+        if filename != "__dashboard__.ipynb":
+            return {"error": f"文件名必须为__dashboard__.ipynb，当前文件名: {filename}"}
+
+        # 登录Bio-OS
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+
+        # 获取工作空间
+        ws = bioos.workspace(cfg.workspace_id)
+
+        # 上传文件到根目录
+        upload_result = ws.files.upload(
+            sources=[cfg.local_file_path],
+            target="",  # 上传到根目录
+            flatten=True
+        )
+
+        if upload_result:
+            # 获取S3 URL
+            s3_url = ws.files.s3_urls(["__dashboard__.ipynb"])[0]
+            expected_s3_url = f"s3://bioos-{cfg.workspace_id}/__dashboard__.ipynb"
+
+            return {
+                "success": True,
+                "message": "文件上传成功",
+                "local_file": cfg.local_file_path,
+                "s3_url": s3_url,
+                "expected_s3_url": expected_s3_url,
+                "workspace_id": cfg.workspace_id
+            }
+        else:
+            return {"error": "文件上传失败"}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 # ===== Dockstore Tools =====
 @mcp.tool()
