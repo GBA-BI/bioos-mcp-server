@@ -20,3 +20,4 @@ packages = ["src/bioos_mcp"]
 
 [tool.uv.sources]
 pybioos = { path = "../pybioos", editable = true }
+
