@@ -10,7 +10,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple,Optional,Union
+from typing import Any, Dict, List, Tuple, Optional, Union
 from pydantic import BaseModel, Field, model_validator, field_validator
 import requests
 from mcp.server.fastmcp import FastMCP
@@ -19,6 +19,7 @@ from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
 from bioos.workflow_info import WorkflowInfo
 from bioos_mcp.tools.compose_tools import build_inputs
+from bioos import bioos
 import asyncio, functools
 
 
@@ -67,15 +68,26 @@ class WDLValidateConfig:
 
 
 # ----- 工作流相关配置 -----
-@dataclass
-class WorkflowConfig:
-    """工作流配置"""
-    workspace_name: str
-    workflow_name: str
-    input_json: str
-    ak: Optional[str] = None
-    sk: Optional[str] = None
-    endpoint: str = DEFAULT_ENDPOINT
+class SubmitWorkflowConfig(BaseModel):
+    # 必填
+    workspace_name: str = Field(..., description="目标 Workspace 名称（--workspace_name）")
+    workflow_name: str = Field(..., description="目标 Workflow 名称（--workflow_name）")
+    input_json: str = Field(..., description="Cromwell Womtools 格式的输入 JSON 文件路径（--input_json）")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点（--endpoint）")
+    ak: Optional[str] = Field(default=None, description="Access Key；为空则从环境变量 BIOOS_AK 获取")
+    sk: Optional[str] = Field(default=None, description="Secret Key；为空则从环境变量 BIOOS_SK 获取")
+    # 可选：bw 其他参数
+    data_model_name: Optional[str] = Field(default=None, description="在平台生成的数据模型名称（--data_model_name）")
+    call_caching: bool = Field(default=False, description="是否启用 call caching（--call_caching）")
+    submission_desc: Optional[str] = Field(default=None, description="本次提交的描述（--submission_desc）")
+    force_reupload: bool = Field(default=False, description="是否强制重新上传已存在的 TOS 文件（--force_reupload）")
+    mount_tos: bool = Field(default=False, description="是否挂载 TOS（--mount_tos）")
+    monitor: bool = Field(default=False, description="是否监控任务直至结束（--monitor）")
+    monitor_interval: Optional[int] = Field(
+        default=None, ge=1, description="监控模式下的查询间隔（秒）（--monitor_interval）"
+    )
+    download_results: bool = Field(default=False, description="是否在结束后下载结果（--download_results）")
+    download_dir: Optional[str] = Field(default=None, description="下载结果的本地目录（--download_dir）")
 
 
 @dataclass
@@ -86,6 +98,32 @@ class WorkflowImportStatusConfig:
     ak: Optional[str] = None
     sk: Optional[str] = None
     endpoint: str = DEFAULT_ENDPOINT
+
+
+class BioosWorkspaceConfig(BaseModel):
+    """Bio-OS 工作空间创建配置"""
+    workspace_name: str = Field(..., description="要创建的工作空间名称")
+    workspace_description: str = Field(..., description="工作空间描述")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class BioosBindClusterToWorkspace(BaseModel):
+    """Bio-OS 工作空间绑定集群"""
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    workspace_id: str = Field(..., description="要绑定集群的工作空间 ID")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+    cluster_id: str = Field(default="default", description="要绑定集群的类型")
+
+class BioosS3FileUploader(BaseModel):
+    """Bio-OS S3文件上传器"""
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    workspace_id: str = Field(..., description="目标工作空间 ID")
+    local_file_path: str = Field(..., description="本地文件路径")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 
 class BioosWorkflowJsonConfig(BaseModel):
@@ -523,43 +561,71 @@ def workflow_submission_prompt() -> str:
     """
 
 
+def build_bw_cmd(cfg: SubmitWorkflowConfig, ak: str, sk: str) -> list[str]:
+    cmd: list[str] = [
+        "bw",
+        "--ak", ak,
+        "--sk", sk,
+        "--endpoint", cfg.endpoint,
+        "--workspace_name", cfg.workspace_name,
+        "--workflow_name", cfg.workflow_name,
+        "--input_json", cfg.input_json,
+    ]
+
+    if cfg.data_model_name:
+        cmd += ["--data_model_name", cfg.data_model_name]
+    if cfg.call_caching:
+        cmd += ["--call_caching"]
+    if cfg.submission_desc:
+        cmd += ["--submission_desc", cfg.submission_desc]
+    if cfg.force_reupload:
+        cmd += ["--force_reupload"]
+    if cfg.mount_tos:
+        cmd += ["--mount_tos"]
+    if cfg.monitor:
+        cmd += ["--monitor"]
+    if cfg.monitor_interval is not None:
+        cmd += ["--monitor_interval", str(cfg.monitor_interval)]
+    if cfg.download_results:
+        cmd += ["--download_results"]
+    if cfg.download_dir:
+        cmd += ["--download_dir", cfg.download_dir]
+
+    return cmd
+
+
 @mcp.tool()
-async def submit_workflow(config: WorkflowConfig) -> str:
+async def submit_workflow(config: SubmitWorkflowConfig) -> str:
     """提交并监控 Bio-OS 工作流"""
     try:
-        # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(config.ak, config.sk)
-        
-        cmd = [
-            "bw", "--ak", ak, "--sk", sk, "--endpoint", config.endpoint,
-            "--workspace_name", config.workspace_name, "--workflow_name", config.workflow_name,
-            "--input_json", config.input_json
-        ]
+        cmd = build_bw_cmd(config, ak, sk)
 
-        result = subprocess.run(cmd,
-                                capture_output=True,
-                                text=True,
-                                check=True)
-        # 同时返回 stderr 和 stdout 的内容
-        output = []
-        if result.stdout:
-            output.append(result.stdout)
-        if result.stderr:
-            output.append(result.stderr)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
 
-        if not output:  # 如果没有任何输出
-            return "工作流提交成功！请使用 check_workflow_status 查询执行状态。"
+        outs = []
+        if result.stdout and result.stdout.strip():
+            outs.append(result.stdout.strip())
+        if result.stderr and result.stderr.strip():
+            outs.append(result.stderr.strip())
 
-        return "\n".join(output)
+        return "\n".join(outs) if outs else "工作流提交成功！可使用 `check_workflow_status` 查询执行状态。"
+
     except subprocess.CalledProcessError as e:
-        error_msg = []
+        msg = []
         if e.stdout:
-            error_msg.append(f"标准输出：\n{e.stdout}")
+            msg.append(f"标准输出：\n{e.stdout}")
         if e.stderr:
-            error_msg.append(f"错误输出：\n{e.stderr}")
-        return f"工作流提交失败：\n" + "\n".join(error_msg)
+            msg.append(f"错误输出：\n{e.stderr}")
+        return "工作流提交失败：\n" + ("\n".join(msg) if msg else f"退出码：{e.returncode}")
     except Exception as e:
-        return f"提交过程出现错误：{str(e)}"
+        # 常见：凭证缺失、参数校验失败、bw 不在 PATH 等
+        return f"提交过程出现错误：{e}"
 
 
 @mcp.tool()
@@ -627,6 +693,85 @@ async def get_workflow_logs(config: WorkflowLogsConfig) -> str:
     if result.stderr:
         output.append(result.stderr)
     return "\n".join(output)
+
+
+@mcp.tool(description="Bio-OS 创建新工作空间")
+async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.create_workspace(
+            name=cfg.workspace_name,
+            description=cfg.workspace_description
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(description="Bio-OS工作空间绑定集群")
+async def bind_cluster_to_workspace(cfg: BioosBindClusterToWorkspace) -> Dict[str, Any]:
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        ws = bioos.Workspace(cfg.workspace_id)
+        result = ws.bind_cluster(cluster_id=cfg.cluster_id)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(description="上传__dashboard__.ipynb文件到指定工作空间的S3桶")
+async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
+    """
+    上传__dashboard__.ipynb文件到指定工作空间的S3桶
+    """
+    try:
+        # 获取 ak、sk，用户输入优先于环境变量
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+
+        # 检查本地文件是否存在
+        if not os.path.exists(cfg.local_file_path):
+            return {"error": f"本地文件不存在: {cfg.local_file_path}"}
+
+        # 检查文件名是否为__dashboard__.ipynb
+        filename = os.path.basename(cfg.local_file_path)
+        if filename != "__dashboard__.ipynb":
+            return {"error": f"文件名必须为__dashboard__.ipynb，当前文件名: {filename}"}
+
+        # 登录Bio-OS
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+
+        # 获取工作空间
+        ws = bioos.workspace(cfg.workspace_id)
+
+        # 上传文件到根目录
+        upload_result = ws.files.upload(
+            sources=[cfg.local_file_path],
+            target="",  # 上传到根目录
+            flatten=True
+        )
+
+        if upload_result:
+            # 获取S3 URL
+            s3_url = ws.files.s3_urls(["__dashboard__.ipynb"])[0]
+            expected_s3_url = f"s3://bioos-{cfg.workspace_id}/__dashboard__.ipynb"
+
+            return {
+                "success": True,
+                "message": "文件上传成功",
+                "local_file": cfg.local_file_path,
+                "s3_url": s3_url,
+                "expected_s3_url": expected_s3_url,
+                "workspace_id": cfg.workspace_id
+            }
+        else:
+            return {"error": "文件上传失败"}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ===== Dockstore Tools =====
