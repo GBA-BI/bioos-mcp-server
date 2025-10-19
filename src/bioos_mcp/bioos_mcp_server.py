@@ -49,6 +49,27 @@ def get_credentials(user_ak: Optional[str] = None, user_sk: Optional[str] = None
     
     return ak, sk
 
+def load_miracle_env_from_parent_proc():
+    """
+    Read the parent process environment and write all variables 
+    starting with 'MIRACLE' into the current process environment.
+    """
+    ppid = os.getppid()  # get parent process ID
+    try:
+        # Open the parent process's environ file
+        with open(f"/proc/{ppid}/environ", "rb") as f:
+            raw = f.read().decode()
+            parent_env = dict(x.split("=", 1) for x in raw.split("\x00") if "=" in x)
+        
+        # Only write variables starting with 'MIRACLE' to current environment
+        for k, v in parent_env.items():
+            if k.startswith("MIRACLE"):
+                os.environ[k] = v
+                # Optional: print confirmation
+                print(f"Loaded {k}={v}")
+    except Exception as e:
+        print(f"Failed to load parent MIRACLE env: {e}")
+
 
 # ===== 数据类定义 =====
 # ----- WDL 相关配置 -----
@@ -1057,4 +1078,8 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     print("mcp running")
+     try:
+        load_miracle_env_from_parent_proc()
+    except Exception as e:
+        print(f"Warning: failed to load parent MIRACLE env: {e}")
     mcp.run()
