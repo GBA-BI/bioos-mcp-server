@@ -39,13 +39,13 @@ TOP_N = 3        # 前 N 条
 # 辅助函数：获取 ak、sk，用户输入优先
 def get_credentials(user_ak: Optional[str] = None, user_sk: Optional[str] = None) -> Tuple[str, str]:
     """获取 ak、sk，用户输入优先于环境变量"""
-    ak = user_ak if user_ak is not None else os.getenv("ak")
-    sk = user_sk if user_sk is not None else os.getenv("sk")
+    ak = user_ak if user_ak is not None else os.getenv("MIRACLE_ACCESS_KEY")
+    sk = user_sk if user_sk is not None else os.getenv("MIRACLE_SECRET_KEY")
     
     if not ak:
-        raise ValueError("未提供 ak，请设置环境变量 'ak' 或在参数中指定")
+        raise ValueError("未提供 MIRACLE_ACCESS_KEY，请设置环境变量 'MIRACLE_ACCESS_KEY' 或在参数中指定")
     if not sk:
-        raise ValueError("未提供 sk，请设置环境变量 'sk' 或在参数中指定")
+        raise ValueError("未提供 MIRACLE_SECRET_KEY，请设置环境变量 'MIRACLE_SECRET_KEY' 或在参数中指定")
     
     return ak, sk
 
@@ -456,8 +456,8 @@ async def get_ak_and_execute() -> Dict[str, str]:
     """
     获取 AK/SK 环境变量状态。
     """
-    ak = os.getenv("ak")
-    sk = os.getenv("sk")
+    ak = os.getenv("MIRACLE_ACCESS_KEY")
+    sk = os.getenv("MIRACLE_SECRET_KEY")
 
     return {
         "ak": ak if ak else "未设置",
@@ -1078,7 +1078,7 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     print("mcp running")
-     try:
+    try:
         load_miracle_env_from_parent_proc()
     except Exception as e:
         print(f"Warning: failed to load parent MIRACLE env: {e}")
