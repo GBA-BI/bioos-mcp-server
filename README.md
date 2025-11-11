@@ -40,8 +40,8 @@ Configure the Bio-OS MCP Server script path in CLINE's MCP settings. Replace the
       ],
       "env": {
         "PYTHONPATH": "path/to/bioos-mcp-server/src",
-        "ak": "xxxxxxxxxxxx",
-        "sk": "xxxxxxxxxxxx"
+        "MIRACLE_ACCESS_KEY": "xxxxxxxxxxxx",
+        "MIRACLE_SECRET_KEY": "xxxxxxxxxxxx"
       }
     }
   }
