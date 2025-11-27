@@ -49,6 +49,14 @@ def get_credentials(user_ak: Optional[str] = None, user_sk: Optional[str] = None
     
     return ak, sk
 
+def get_workspace_id_by_name(workspace_name: str) -> str:
+    """根据工作空间名称解析得到其 ID"""
+    workspaces = bioos.list_workspaces()
+    workspace_info = workspaces.query(f"Name=='{workspace_name}'")
+    if getattr(workspace_info, "empty", True):
+        raise ValueError(f"未找到工作空间：{workspace_name}")
+    return str(workspace_info["ID"].iloc[0])
+
 def load_miracle_env_from_parent_proc():
     """
     Read the parent process environment and write all variables
@@ -134,7 +142,7 @@ class BioosBindClusterToWorkspace(BaseModel):
     """Bio-OS 工作空间绑定集群"""
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="要绑定集群的工作空间 ID")
+    workspace_name: str = Field(..., description="要绑定集群的工作空间名称")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     cluster_id: str = Field(default="default", description="要绑定集群的类型")
     type: str = Field(default="workflow", description="要绑定的集群资源")
@@ -144,7 +152,7 @@ class BioosExportWorkspace(BaseModel):
     """导出 Bio-OS 工作空间元信息"""
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="要导出的工作空间 ID")
+    workspace_name: str = Field(..., description="要导出的工作空间名称")
     export_path: str = Field(..., description="导出工作空间元信息保存的路径（绝对路径）")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
@@ -152,7 +160,7 @@ class BioosExportWorkspace(BaseModel):
 class BioosCreateIesapp(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="要绑定集群的工作空间 ID")
+    workspace_name: str = Field(..., description="目标工作空间名称")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     ies_name: str = Field(..., description="要新建的 iesapp 的名字")
     ies_desc: str = Field(..., description="IES描述")
@@ -168,7 +176,7 @@ class BioosCreateIesapp(BaseModel):
 class Check_iesapp_status(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="要查看的工作空间 ID")
+    workspace_name: str = Field(..., description="要查看的工作空间名称")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     ies_name: str = Field(..., description="要查看的 iesapp 的名字")
 
@@ -176,7 +184,7 @@ class Check_iesapp_status(BaseModel):
 class GetIesEvents(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="要查看的工作空间 ID")
+    workspace_name: str = Field(..., description="要查看的工作空间名称")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
     ies_name: str = Field(..., description="要查看的iesapp的名字")
 
@@ -185,14 +193,14 @@ class BioosS3FileUploader(BaseModel):
     """Bio-OS S3文件上传器"""
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_id: str = Field(..., description="目标工作空间 ID")
+    workspace_name: str = Field(..., description="目标工作空间名称")
     local_file_path: str = Field(..., description="本地文件路径")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 
 class BioosWorkflowJsonConfig(BaseModel):
     "Bio-OS 上已导入 workflow 的 inputs.json 构建和任务投递"
-    workspace_id: str = Field(..., description="工作空间ID")
+    workspace_name: str = Field(..., description="工作空间名称")
     workflow_name: str = Field(..., description="工作流名称")
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
@@ -201,11 +209,19 @@ class BioosWorkflowJsonConfig(BaseModel):
 
 class BioosDeleteSubmissionConfig(BaseModel):
     """Bio-OS 删除工作流提交配置"""
-    workspace_id: str = Field(..., description="工作空间ID")
+    workspace_name: str = Field(..., description="工作空间名称")
     submission_id: str = Field(..., description="要删除的提交ID")
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class ListWorkspaceConfig(BaseModel):
+    """列出工作空间列表配置"""
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+    page_size: Optional[int] = Field(default=None, ge=1, description="返回的最大条目数（仅在 MCP 侧进行裁剪，非服务端分页）")
 
 
 class WorkflowImportConfig(BaseModel):
@@ -519,6 +535,43 @@ async def get_ak_and_execute() -> Dict[str, str]:
         "note": "所有工具会优先使用用户输入的 ak/sk，如果用户未提供则使用环境变量"
     }
 
+@mcp.tool(description="列出当前登录环境的工作空间名称与描述")
+async def list_workspace(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
+    """列出 Bio-OS 工作空间，仅返回 Name 与 Description 字段。
+
+    说明：
+    - 该工具使用 `bioos.list_workspaces()` 获取工作空间列表（DataFrame）。
+    - 暂不支持服务端分页参数 PageNumber；`page_size` 仅在 MCP 侧进行裁剪。
+    """
+    # 读取/校验凭证
+    ak, sk = get_credentials(config.ak, config.sk)
+
+    # 按既有模式登录 Bio-OS（参考其他工具的实现）
+    bioos.login(endpoint=config.endpoint, access_key=ak, secret_key=sk)
+
+    # 列出工作空间
+    workspaces = bioos.list_workspaces()
+
+    # 若为空，直接返回空列表
+    if getattr(workspaces, "empty", False):
+        return []
+    
+    try:
+        df = workspaces[["Name", "Description"]]
+    except Exception:
+        # 兼容非 DataFrame 返回的情况
+        records = getattr(workspaces, "to_dict", lambda **kwargs: workspaces)(orient="records")
+        trimmed = records[: config.page_size] if (config.page_size and config.page_size > 0) else records
+        return [{"Name": r.get("Name", ""), "Description": r.get("Description", "")} for r in trimmed]
+
+    if config.page_size and config.page_size > 0:
+        df = df.head(config.page_size)
+
+    return [
+        {"Name": str(row.Name), "Description": str(row.Description) if row.Description is not None else ""}
+        for row in df.itertuples(index=False)
+    ]
+
 @mcp.tool()
 async def import_workflow(config: WorkflowImportConfig) -> str:
     """
@@ -578,8 +631,10 @@ async def generate_inputs_json_template_bioos(cfg: BioosWorkflowJsonConfig) -> D
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         # 登录 Bio-OS
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        # 解析工作空间 ID
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
         # 获取工作空间和工作流
-        ws = bioos.Workspace(cfg.workspace_id)
+        ws = bioos.Workspace(workspace_id)
         workflow = ws.workflow(cfg.workflow_name)
         # 获取输入参数模板
         inputs = workflow.get_input_template()
@@ -779,8 +834,8 @@ async def delete_submission(cfg: BioosDeleteSubmissionConfig) -> Dict[str, Any]:
         # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-
-        result = Submission(cfg.workspace_id, cfg.submission_id).delete()
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        result = Submission(workspace_id, cfg.submission_id).delete()
         return {"success": True, "message": f"提交 '{cfg.submission_id}' 已成功删除", "result": result}
     except Exception as e:
         return {"error": str(e)}
@@ -807,7 +862,8 @@ async def exportbioosworkspace(cfg: BioosExportWorkspace) -> Dict[str, Any]:
         # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        ws = bioos.Workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.Workspace(workspace_id)
         result = ws.export_workspace_v2(
             download_path=cfg.export_path,
             monitor=True,
@@ -825,7 +881,8 @@ async def bind_cluster_to_workspace(cfg: BioosBindClusterToWorkspace) -> Dict[st
         # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        ws = bioos.Workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.Workspace(workspace_id)
         result = ws.bind_cluster(cluster_id=cfg.cluster_id, type_=cfg.type)
         return result
     except Exception as e:
@@ -837,7 +894,8 @@ async def create_iesapp(cfg: BioosCreateIesapp) -> Dict[str, Any]:
     try:
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        ws = bioos.Workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.Workspace(workspace_id)
         exists = ws.webinstanceapps.check_name_exists(cfg.ies_name)
         if exists:
             return {"error": "名称已存在，请先删除现有实例或使用不同的名称"}
@@ -866,7 +924,8 @@ async def check_ies_status(cfg: Check_iesapp_status) -> Dict[str, Any]:
     try:
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        ws = bioos.Workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.Workspace(workspace_id)
         app = ws.webinstanceapp(cfg.ies_name)
         app.sync.__wrapped__(app)
         if app.is_running():
@@ -892,7 +951,8 @@ async def get_ies_events(cfg: GetIesEvents) -> Dict[str, Any]:
     try:
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        ws = bioos.Workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.Workspace(workspace_id)
         app = ws.webinstanceapp(cfg.ies_name)
         events = app.get_events()
         return {"events": events}
@@ -922,7 +982,8 @@ async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
 
         # 获取工作空间
-        ws = bioos.workspace(cfg.workspace_id)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.workspace(workspace_id)
 
         # 上传文件到根目录
         upload_result = ws.files.upload(
@@ -934,7 +995,7 @@ async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
         if upload_result:
             # 获取S3 URL
             s3_url = ws.files.s3_urls(["__dashboard__.md"])[0]
-            expected_s3_url = f"s3://bioos-{cfg.workspace_id}/__dashboard__.md"
+            expected_s3_url = f"s3://bioos-{workspace_id}/__dashboard__.md"
 
             return {
                 "success": True,
@@ -942,7 +1003,7 @@ async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
                 "local_file": cfg.local_file_path,
                 "s3_url": s3_url,
                 "expected_s3_url": expected_s3_url,
-                "workspace_id": cfg.workspace_id
+                "workspace_id": workspace_id
             }
         else:
             return {"error": "文件上传失败"}
