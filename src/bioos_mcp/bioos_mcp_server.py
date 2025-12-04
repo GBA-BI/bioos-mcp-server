@@ -29,11 +29,8 @@ mcp = FastMCP("Bio-OS-MCP-Server")
 # 默认的 Bio-OS endpoint
 DEFAULT_ENDPOINT = "https://bio-top.miracle.ac.cn"
 
-# 修改默认 runtime 配置，移除 docker 字段，因为它必须由用户指定
-DEFAULT_RUNTIME = {"memory": "8 GB", "disk": "20 GB", "cpu": 4}
 
 RERANKER = RerankClient(api_url="http://10.22.17.85:10802/rerank")
-TOP_N = 3        # 前 N 条
 
 
 # 辅助函数：获取 ak、sk，用户输入优先
@@ -79,21 +76,11 @@ def load_miracle_env_from_parent_proc():
         print(f"Failed to load parent MIRACLE env: {e}")
 
 
-# ===== 数据类定义 =====
-# ----- WDL 相关配置 -----
-@dataclass
-class WDLRuntimeConfig:
-    """WDL runtime 配置"""
-    docker_image: str  # docker 镜像必须指定，不提供默认值
-    memory_gb: int = 8
-    disk_gb: int = 20
-    cpu: int = 4
 
 
-@dataclass
-class WDLValidateConfig:
+class WDLValidateConfig(BaseModel):
     """WDL 文件验证配置"""
-    wdl_path: str  # WDL 文件路径
+    wdl_path: str = Field(..., description="待验证的WDL 文件路径")
 
 
 # ----- 工作流相关配置 -----
@@ -103,8 +90,8 @@ class SubmitWorkflowConfig(BaseModel):
     workflow_name: str = Field(..., description="目标 Workflow 名称（--workflow_name）")
     input_json: str = Field(..., description="Cromwell Womtools 格式的输入 JSON 文件路径（--input_json）")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点（--endpoint）")
-    ak: Optional[str] = Field(default=None, description="Access Key；为空则从环境变量 BIOOS_AK 获取")
-    sk: Optional[str] = Field(default=None, description="Secret Key；为空则从环境变量 BIOOS_SK 获取")
+    ak: Optional[str] = Field(default=None, description="Access Key；为空则从环境变量 MIRACLE_ACCESS_KEY 获取")
+    sk: Optional[str] = Field(default=None, description="Secret Key；为空则从环境变量 MIRACLE_SECRET_KEY 获取")
     # 可选：bw 其他参数
     data_model_name: Optional[str] = Field(default=None, description="在平台生成的数据模型名称（--data_model_name）")
     call_caching: bool = Field(default=False, description="是否启用 call caching（--call_caching）")
@@ -119,14 +106,13 @@ class SubmitWorkflowConfig(BaseModel):
     download_dir: Optional[str] = Field(default=None, description="下载结果的本地目录（--download_dir）")
 
 
-@dataclass
-class WorkflowImportStatusConfig:
+class WorkflowImportStatusConfig(BaseModel):
     """工作流导入状态查询配置"""
-    workspace_name: str
-    workflow_id: str
-    ak: Optional[str] = None
-    sk: Optional[str] = None
-    endpoint: str = DEFAULT_ENDPOINT
+    workspace_name: str = Field(..., description="工作空间名称")
+    workflow_id: str = Field(..., description="工作流ID")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 
 class BioosWorkspaceConfig(BaseModel):
@@ -136,17 +122,7 @@ class BioosWorkspaceConfig(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
-
-
-class BioosBindClusterToWorkspace(BaseModel):
-    """Bio-OS 工作空间绑定集群"""
-    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
-    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
-    workspace_name: str = Field(..., description="要绑定集群的工作空间名称")
-    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
-    cluster_id: str = Field(default="default", description="要绑定集群的类型")
-    type: str = Field(default="workflow", description="要绑定的集群资源")
-
+    type: str = Field(default="workflow", description="要绑定的集群资源，如果是wdl那就workflow，如果是ies应用那就webapp-ies")
 
 class BioosExportWorkspace(BaseModel):
     """导出 Bio-OS 工作空间元信息"""
@@ -239,25 +215,23 @@ class WorkflowImportConfig(BaseModel):
     )
 
 
-@dataclass
-class WorkflowStatusConfig:
+class WorkflowStatusConfig(BaseModel):
     """工作流运行状态查询配置"""
-    workspace_name: str
-    submission_id: str
-    ak: Optional[str] = None
-    sk: Optional[str] = None
-    endpoint: str = DEFAULT_ENDPOINT
+    workspace_name: str = Field(..., description="工作空间名称")
+    submission_id: str = Field(..., description="提交ID")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
 
 
-@dataclass
-class WorkflowLogsConfig:
+class WorkflowLogsConfig(BaseModel):
     """工作流日志获取配置"""
-    workspace_name: str
-    submission_id: str
-    ak: Optional[str] = None
-    sk: Optional[str] = None
-    endpoint: str = DEFAULT_ENDPOINT
-    output_dir: str = "."  # 默认为当前目录
+    workspace_name: str = Field(..., description="工作空间名称")
+    submission_id: str = Field(..., description="提交ID")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+    output_dir: str = Field(default=".", description="日志输出目录")
 
 
 class WorkflowInputParams(BaseModel):
@@ -308,11 +282,10 @@ class WorkflowInputParams(BaseModel):
         return v
 
 
-@dataclass
-class WorkflowInputValidateConfig:
+class WorkflowInputValidateConfig(BaseModel):
     """工作流输入验证配置"""
-    wdl_path: str  # WDL 文件路径
-    input_json: str  # 输入 JSON 文件路径
+    wdl_path: str = Field(..., description="WDL 文件路径")
+    input_json: str = Field(..., description="输入 JSON 文件路径")
 
 
 # ----- Dockstore 相关配置 -----
@@ -333,19 +306,19 @@ ALLOWED_QUERY_TYPES = ["match_phrase", "wildcard"]  # 支持的查询类型
 DEFAULT_QUERY_TYPE = "match_phrase"  # 默认查询类型
 
 
-@dataclass
-class DockstoreSearchConfig:
+class DockstoreSearchConfig(BaseModel):
     """Dockstore 搜索配置类
     用于定义和验证搜索参数
     """
-    query: List[List[str]] = field(
-        default_factory=list)  # 搜索条件列表 [field, match_type, term]
-    query_type: str = DEFAULT_QUERY_TYPE  # 查询类型
-    sentence: bool = False  # 是否作为句子搜索
-    output_full: bool = False  # 是否输出完整结果
-    get_files: str = None  # 获取特定工作流文件的路径
+    top_n: int = Field(default=3, description="返回前 N 条结果")
+    query: List[List[str]] = Field(default_factory=list, description="搜索条件列表 [field, match_type, term]")
+    query_type: str = Field(default=DEFAULT_QUERY_TYPE, description="查询类型")
+    sentence: bool = Field(default=False, description="是否作为句子搜索")
+    output_full: bool = Field(default=False, description="是否输出完整结果")
+    get_files: Optional[str] = Field(default=None, description="获取特定工作流文件的路径")
 
-    def __post_init__(self):
+    @model_validator(mode="after")
+    def validate_config(self):
         """配置验证方法
         确保提供了必要的搜索参数并验证查询类型
         """
@@ -353,151 +326,22 @@ class DockstoreSearchConfig:
             raise ValueError("必须提供搜索条件或工作流路径")
         if self.query_type not in ALLOWED_QUERY_TYPES:
             raise ValueError(f"不支持的查询类型: {self.query_type}")
+        return self
 
 
-@dataclass
-class DockstoreDownloadConfig:
+class DockstoreDownloadConfig(BaseModel):
     """Dockstore workflow download configuration"""
-    url: str  # Workflow URL or path
-    output_path: str = "."  # Directory path for saving workflow files
+    url: str = Field(..., description="Workflow URL or path")
+    output_path: str = Field(default=".", description="Directory path for saving workflow files")
 
 
-# ----- Docker 相关配置 -----
-@dataclass
-class DockerfileConfig:
-    """Dockerfile 生成配置"""
-    tool_name: str  # 工具名称
-    tool_version: str  # 工具版本
-    output_path: str  # Dockerfile 输出路径
-    python_version: str  # Python 版本
-    conda_packages: List[str]  # 需要安装的 conda 包列表
-    conda_channels: List[str] = field(
-        default_factory=lambda: ["conda-forge", "bioconda", "defaults"
-                                 ])  # conda 安装源
-
-
-@dataclass
-class DockerBuildConfig:
+class DockerBuildConfig(BaseModel):
     """Docker 构建配置"""
-    repo_name: str  # 仓库名称（必需）
-    tag: str  # 版本标签（必需）
-    source_path: str  # Dockerfile 或压缩包路径（必需）
-    registry: str = "registry-vpc.miracle.ac.cn"  # 镜像仓库地址
-    namespace_name: str = "auto-build"  # 命名空间
-
-
-# ===== 工作流开发工具 =====
-# ----- 开发流程提示 -----
-@mcp.prompt()
-def wdl_development_workflow_prompt() -> str:
-    """生成 WDL 工作流开发流程的完整指引"""
-    return """
-    WDL 工作流开发完整流程指南：
-
-    1. WDL 脚本开发
-       - 根据需求分析，确定工作流程的各个步骤
-       - 为每个步骤创建对应的 task
-       - 每个 task 需包含:
-         * input 部分：定义输入参数
-           - 对于文件类型的输入，必须使用 File 类型而不是 String
-           - 禁止使用 String 类型传递文件路径，这可能导致云环境下的路径解析错误
-           - 示例：
-             √ File input_bam
-             × String bam_path
-         * command 部分：具体的执行命令
-         * output 部分：定义输出结果
-           - 输出文件同样必须使用 File 类型
-           - 确保输出文件的路径是相对于工作目录的
-         * runtime 部分：指定运行环境要求
-           - docker 镜像：必须由用户显式指定，不提供默认值
-             * 示例：
-               runtime {
-                 docker: "${docker_image}"  # 通过 workflow 的输入参数指定
-               }
-           - 内存大小 (默认: 8 GB)
-           - 磁盘大小 (默认: 20 GB)
-           - CPU 核数 (默认: 4)
-       - 使用 workflow 部分组织 task 的执行顺序
-
-    2. WDL 脚本验证
-       - 使用 validate_wdl 工具验证语法
-       - 修复验证过程中发现的问题
-       - 重复验证直到通过
-
-    3. 工作流上传
-       - 准备工作流描述信息
-       - 使用 import_workflow 工具上传到 Bio-OS
-       - 使用 check_workflow_import_status 查询导入状态
-         * 等待 WDL 语法验证完成
-         * 确认导入成功
-       - 如果导入失败，根据错误信息修改 WDL 文件并重试
-
-    4. Docker 镜像准备
-       - 为每个 task 准备对应的 Dockerfile
-       - 遵循以下规则：
-         * 优先使用 Miniconda 作为基础镜像
-         * 使用 conda 安装生物信息软件
-         * 创建独立的 conda 环境
-       - 使用 build_docker_image 构建镜像
-       - 使用 check_build_status 监控构建进度
-       - 确保所有镜像构建成功
-
-    5. 输入模板生成
-       - 使用 generate_inputs_json_template 生成模板
-       - 查看生成的模板，了解需要提供的参数
-
-    6. 输入文件准备
-       - 根据实际需求修改输入参数
-       - 确保所有必需参数都已填写
-       - 确保文件路径等参数正确
-       - 使用 validate_workflow_input_json 验证修改后的输入文件
-
-    7. 工作流执行与监控
-       - 使用 submit_workflow 提交工作流
-       - 使用 check_workflow_status 监控执行进度
-         * 定期查询任务状态
-         * 等待执行完成
-       - 如果执行失败：
-         * 使用 get_workflow_logs 获取详细的执行日志
-         * 分析日志中的错误信息
-         * 根据错误信息修改相关配置
-         * 重新提交直到成功或决定终止
-
-    在每个步骤中，如果遇到问题，我都会提供具体的指导和帮助。
-    让我们开始第一步：请描述您的工作流需求，我来帮您开发 WDL 脚本。
-    """
-
-
-@mcp.prompt()
-def wdl_runtime_prompt() -> str:
-    """生成 WDL runtime 配置提示模板"""
-    return """
-    请提供以下 WDL runtime 配置信息：
-    1. Docker 镜像 (必需)
-    2. 内存大小 (默认: 8 GB)
-    3. 磁盘大小 (默认: 20 GB)
-    4. CPU 核数 (默认: 4)
-    """
-
-
-# ----- WDL 开发工具 -----
-@mcp.tool()
-async def generate_wdl_runtime(config: WDLRuntimeConfig) -> str:
-    """生成标准的 WDL runtime 配置块
-    
-    docker 参数必须由用户显式指定，不提供默认值
-    """
-    if not config.docker_image:
-        raise ValueError("必须指定 docker_image 参数")
-
-    runtime_template = f"""    runtime {{
-        docker: "{config.docker_image}"
-        memory: "{config.memory_gb} GB"
-        disk: "{config.disk_gb} GB"
-        cpu: {config.cpu}
-    }}"""
-
-    return runtime_template
+    repo_name: str = Field(..., description="仓库名称")
+    tag: str = Field(..., description="版本标签")
+    source_path: str = Field(..., description="Dockerfile 或压缩包路径")
+    registry: str = Field(default="registry-vpc.miracle.ac.cn", description="镜像仓库地址")
+    namespace_name: str = Field(default="auto-build", description="命名空间")
 
 
 @mcp.tool()
@@ -520,20 +364,6 @@ async def validate_wdl(config: WDLValidateConfig) -> str:
     except Exception as e:
         return f"验证过程出现错误：{str(e)}"
 
-@mcp.tool(description="获取 AK/SK 环境变量状态")
-async def get_ak_and_execute() -> Dict[str, str]:
-    """
-    获取 AK/SK 环境变量状态。
-    """
-    ak = os.getenv("MIRACLE_ACCESS_KEY")
-    sk = os.getenv("MIRACLE_SECRET_KEY")
-
-    return {
-        "ak": ak if ak else "未设置",
-        "sk": sk if sk else "未设置",
-        "status": "已设置" if (ak and sk) else "缺少必要的环境变量",
-        "note": "所有工具会优先使用用户输入的 ak/sk，如果用户未提供则使用环境变量"
-    }
 
 @mcp.tool(description="列出当前登录环境的工作空间名称与描述")
 async def list_workspace(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
@@ -543,13 +373,10 @@ async def list_workspace(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
     - 该工具使用 `bioos.list_workspaces()` 获取工作空间列表（DataFrame）。
     - 暂不支持服务端分页参数 PageNumber；`page_size` 仅在 MCP 侧进行裁剪。
     """
-    # 读取/校验凭证
     ak, sk = get_credentials(config.ak, config.sk)
 
-    # 按既有模式登录 Bio-OS（参考其他工具的实现）
     bioos.login(endpoint=config.endpoint, access_key=ak, secret_key=sk)
 
-    # 列出工作空间
     workspaces = bioos.list_workspaces()
 
     # 若为空，直接返回空列表
@@ -599,29 +426,6 @@ async def import_workflow(config: WorkflowImportConfig) -> str:
     return "\n".join(output)
 
 
-# ----- 工作流输入处理 -----
-@mcp.prompt()
-def workflow_input_prompt() -> str:
-    """生成工作流输入准备提示模板"""
-    return """
-    工作流输入文件准备流程：
-
-    1. 准备工作流输入
-       - WDL 文件路径 (wdl_path)
-       - 输出 JSON 文件路径 (output_json)
-    
-    2. 修改生成的输入文件
-       - 填写必需参数
-       - 确保文件路径正确
-    
-    3. 验证输入文件
-       - 检查 JSON 格式
-       - 验证必需参数
-       - 检查文件路径有效性
-    
-    4. 提交工作流
-       - 使用验证通过的输入文件
-    """
 
 
 @mcp.tool(description="Bio-OS 上已导入 workflow 的 inputs.json 查询，并生成符合的输入参数模板")
@@ -677,23 +481,9 @@ async def validate_workflow_input_json(
         return f"验证过程出现错误：{str(e)}"
 
 
-# ----- 工作流执行 -----
-@mcp.prompt()
-def workflow_submission_prompt() -> str:
-    """生成工作流提交提示模板"""
-    return """
-    请提供以下工作流提交信息：
-    1. Access Key (ak)
-    2. Secret Key (sk)
-    3. 工作空间名称 (workspace_name)
-    4. 工作流名称 (workflow_name)
-    5. 输入 JSON 文件路径 (input_json)
-    6. 是否需要监控 (monitor) [可选]
-    7. 监控间隔 (monitor_interval) [可选]
-    """
 
-
-def build_bw_cmd(cfg: SubmitWorkflowConfig, ak: str, sk: str) -> list[str]:
+def build_bw_cmd(cfg: SubmitWorkflowConfig) -> list[str]:
+    ak, sk = get_credentials(cfg.ak, cfg.sk)
     cmd: list[str] = [
         "bw",
         "--ak", ak,
@@ -730,8 +520,7 @@ def build_bw_cmd(cfg: SubmitWorkflowConfig, ak: str, sk: str) -> list[str]:
 async def submit_workflow(config: SubmitWorkflowConfig) -> str:
     """提交并监控 Bio-OS 工作流"""
     try:
-        ak, sk = get_credentials(config.ak, config.sk)
-        cmd = build_bw_cmd(config, ak, sk)
+        cmd = build_bw_cmd(config)
 
         result = subprocess.run(
             cmd,
@@ -782,8 +571,7 @@ async def check_workflow_run_status(config: WorkflowStatusConfig) -> str:
 
 
 @mcp.tool()
-async def check_workflow_import_status(
-        config: WorkflowImportStatusConfig) -> str:
+async def check_workflow_import_status(config: WorkflowImportStatusConfig) -> str:
     """查询工作流导入状态"""
     # 获取 ak、sk，用户输入优先于环境变量
     ak, sk = get_credentials(config.ak, config.sk)
@@ -847,17 +635,29 @@ async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
         # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(cfg.ak, cfg.sk)
         bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+
         result = bioos.create_workspace(
             name=cfg.workspace_name,
             description=cfg.workspace_description
         )
-        return result
+        workspace_id = result.get("ID")
+        if not workspace_id:
+            return {"error": f"工作空间创建失败或未返回ID: {result}"}
+
+        # 绑定集群
+        cluster_id = "default"
+        ws = bioos.Workspace(workspace_id)
+        bind_result = ws.bind_cluster(cluster_id=cluster_id, type_=cfg.type)
+
+        return {
+            "message": f"工作空间 '{cfg.workspace_name}' 创建并绑定集群成功"
+        }
     except Exception as e:
         return {"error": str(e)}
 
 
 @mcp.tool(description="Bio-OS 导出工作空间元信息")
-async def exportbioosworkspace(cfg: BioosExportWorkspace) -> Dict[str, Any]:
+async def export_bioos_workspace(cfg: BioosExportWorkspace) -> Dict[str, Any]:
     try:
         # 获取 ak、sk，用户输入优先于环境变量
         ak, sk = get_credentials(cfg.ak, cfg.sk)
@@ -873,21 +673,6 @@ async def exportbioosworkspace(cfg: BioosExportWorkspace) -> Dict[str, Any]:
         return {"message": f"Metadata exported successfully, location at {cfg.export_path}"}
     except Exception as e:
         return {"error": str(e)}
-
-
-@mcp.tool(description="Bio-OS工作空间绑定集群")
-async def bind_cluster_to_workspace(cfg: BioosBindClusterToWorkspace) -> Dict[str, Any]:
-    try:
-        # 获取 ak、sk，用户输入优先于环境变量
-        ak, sk = get_credentials(cfg.ak, cfg.sk)
-        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
-        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
-        ws = bioos.Workspace(workspace_id)
-        result = ws.bind_cluster(cluster_id=cfg.cluster_id, type_=cfg.type)
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
 
 @mcp.tool(description="在指定的workspace中新建一个 IES 实例，用户可在该 IES 实例上进行分析")
 async def create_iesapp(cfg: BioosCreateIesapp) -> Dict[str, Any]:
@@ -1060,12 +845,12 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
                 functools.partial(RERANKER.rerank,
                                   query=user_query,
                                   texts=texts,
-                                  top_n=TOP_N)
+                                  top_n=config.top_n)
             )
         except RuntimeError as e:
             # 若重排失败，降级用 ES 原排序
             print(f"[WARN] Rerank 失败，降级为 ES 排序: {e}")
-            reranked = [{"index": i, "score": h["_score"]} for i, h in enumerate(hits[:TOP_N])]
+            reranked = [{"index": i, "score": h["_score"]} for i, h in enumerate(hits[:config.top_n])]
 
         # ---------- 5. 取回 top_n hits ----------
         top_hits = [hits[item["index"]] for item in reranked]
@@ -1139,122 +924,6 @@ async def fetch_wdl_from_dockstore(
     except Exception as e:
         import traceback
         return {"error": f"下载过程中发生错误: {str(e)}\n{traceback.format_exc()}"}
-
-
-# 在适当位置添加这个提示函数
-
-
-@mcp.prompt()
-def dockstore_search_prompt() -> str:
-    """生成 Dockstore 搜索提示模板"""
-    return """
-    Dockstore 工作流搜索指南：
-
-    请提供以下搜索参数：
-
-    1. 查询条件列表 (query)
-       - 每个查询条件为一个3元素数组: [字段, 匹配类型, 搜索词]
-       - 示例: 
-         [
-            ["organization", "AND", "broadinstitute"],
-            ["descriptorType", "AND", "WDL"]
-         ]
-
-    2. 查询类型 (query_type) [可选]
-       - 默认值: "match_phrase" (精确短语匹配)
-       - 可选值: "wildcard" (通配符匹配，会在搜索词前后添加*)
-
-    3. 句子模式 (sentence) [可选]
-       - 默认值: false
-       - 设为 true 时将搜索词作为完整句子处理
-
-    示例查询:
-    {
-        "query": [
-            [ ["organization", "AND", "broadinstitute"],
-            ["descriptorType", "AND", "WDL"]
-        ],
-        "query_type": "match_phrase",
-        "sentence": true
-    }
-    """
-
-
-# ===== Docker 镜像工具 =====
-# ----- Docker 构建提示 -----
-@mcp.prompt()
-def docker_build_prompt() -> str:
-    """生成 Docker 构建提示模板"""
-    return """
-    Docker 镜像构建流程：
-
-    1. 生成 Dockerfile
-       请提供以下信息：
-       - 工具名称 (tool_name)
-       - 工具版本 (tool_version)
-       - Dockerfile 输出路径 (output_path)
-       - 需要安装的 conda 包列表 (conda_packages)
-       - conda 安装源 [可选，默认使用 conda-forge 和 bioconda]
-       - Python 版本 [可选，默认 3.10]
-       
-
-    2. 构建镜像
-       请提供以下信息：
-       - 仓库名称 (repo_name)
-       - 版本标签 (tag)
-       - Dockerfile 或压缩包路径 (source_path)
-       - 镜像仓库地址 [可选，默认 registry-vpc.miracle.ac.cn]
-       - 命名空间 [可选，默认 auto-build]
-
-    3. 监控构建状态
-       - 使用返回的 TaskID 查询构建进度
-       - 等待构建完成
-       - 构建完成后可获取镜像完整 URL：{Registry}/{NamespaceName}/{RepoName}:{ToTag}
-    """
-
-
-# ----- Docker 构建工具 -----
-@mcp.tool()
-async def generate_dockerfile(config: DockerfileConfig) -> str:
-    """生成用于构建生物信息工具的 Dockerfile
-    """
-    try:
-        output_path = config.output_path
-        # 生成 conda channels 配置命令
-        channels_config = ' && \\\n    '.join(
-            f'conda config --add channels {channel}'
-            for channel in config.conda_channels)
-
-        # 生成 conda 包安装列表
-        packages_list = ' '.join(config.conda_packages)
-
-        # 生成 Dockerfile 内容
-        dockerfile_content = f"""FROM continuumio/miniconda3
-            # 设置工作目录
-            WORKDIR /app
-
-            # 配置 Conda channels 并创建独立环境
-            RUN {channels_config} && \\
-                conda config --set channel_priority strict && \\
-                conda create -n {config.tool_name} python={config.python_version} {packages_list} -y && \\
-                conda clean -afy
-
-            # 将环境路径添加到系统 PATH
-            ENV PATH /opt/conda/envs/{config.tool_name}/bin:$PATH
-
-            # 设置默认命令
-            CMD ["/bin/bash"]
-            """
-
-        # 写入 Dockerfile
-        with open(output_path, 'w') as f:
-            f.write(dockerfile_content)
-
-        return f"成功生成 Dockerfile：{output_path}"
-    except IOError as e:
-        return f"Dockerfile 生成失败: {str(e)}"
-    except Exception as e:
-        return f"生成 Dockerfile 时出错: {str(e)}"
 
 
 @mcp.tool()
