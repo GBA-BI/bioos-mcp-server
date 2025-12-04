@@ -3,7 +3,7 @@
 这个包提供了 Bio-OS 工作流管理和 Docker 镜像构建的功能。
 """
 
-__version__ = "0.0.13"
+__version__ = "0.0.14"
 
 # 从工具模块导入类
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
