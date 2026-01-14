@@ -122,7 +122,6 @@ class BioosWorkspaceConfig(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
-    type: str = Field(default="workflow", description="要绑定的集群资源，如果是wdl那就workflow，如果是ies应用那就webapp-ies")
 
 class BioosExportWorkspace(BaseModel):
     """导出 Bio-OS 工作空间元信息"""
@@ -142,7 +141,7 @@ class BioosCreateIesapp(BaseModel):
     ies_desc: str = Field(..., description="IES描述")
     ies_resource: str = Field(default="2c-4gib", description="资源规格，如 2c-4gib")
     ies_storage: int = Field(default=42949672960, description="存储容量（字节）")
-    ies_image: str = Field(default="registry-vpc.miracle.ac.cn/infcprelease/ies:v1.0.0", description="镜像地址")
+    ies_image: str = Field(default="registry-vpc.miracle.ac.cn/infcprelease/ies-default:latest", description="Docker 镜像地址，必须是可访问的镜像仓库地址")
     ies_ssh: bool = Field(default=True, description="是否开启 SSH")
     ies_run_limit: int = Field(default=10800, description="最长运行时间（秒）")
     ies_idle_timeout: int = Field(default=10800, description="空闲超时（秒）")
@@ -644,10 +643,15 @@ async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
         if not workspace_id:
             return {"error": f"工作空间创建失败或未返回ID: {result}"}
 
-        # 绑定集群
+        # 绑定两种类型的集群
         cluster_id = "default"
         ws = bioos.Workspace(workspace_id)
-        bind_result = ws.bind_cluster(cluster_id=cluster_id, type_=cfg.type)
+        
+        # 绑定 workflow 类型
+        workflow_bind_result = ws.bind_cluster(cluster_id=cluster_id, type_="workflow")
+        
+        # 绑定 webapp-ies 类型
+        webapp_bind_result = ws.bind_cluster(cluster_id=cluster_id, type_="webapp-ies")
 
         return {
             "message": f"工作空间 '{cfg.workspace_name}' 创建并绑定集群成功"
