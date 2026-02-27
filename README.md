@@ -135,6 +135,17 @@ Once configured, you can begin development with Bio-OS MCP Server.
    - Parameters:
      - task_id: Build task ID
 
+7. `download_gse_data`
+   - Function: Start an asynchronous task to download GSE dataset files from NCBI GEO
+   - Parameters:
+     - gse_id: The GSE ID to download (e.g. GSE1000)
+     - target_dir: Absolute path to the destination folder
+
+8. `get_gse_download_status`
+   - Function: Check the progress of a GSE download task
+   - Parameters:
+     - task_id: The task ID returned by download_gse_data
+
 ### Prompts (Not supported in Cline yet)
 
 1. `wdl_development_workflow_prompt`

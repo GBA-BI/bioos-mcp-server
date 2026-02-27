@@ -21,7 +21,14 @@ from bioos.resource.workflows import Submission
 from bioos_mcp.tools.compose_tools import build_inputs
 from bioos import bioos
 import asyncio, functools
+import threading
+import ftplib
+import uuid
+import time
+import concurrent.futures
 
+# Global dictionary for tracking download tasks
+GSE_DOWNLOAD_TASKS: Dict[str, Dict[str, Any]] = {}
 
 # 创建 MCP 服务器，不设置连接超时时间
 mcp = FastMCP("Bio-OS-MCP-Server")
@@ -341,6 +348,17 @@ class DockerBuildConfig(BaseModel):
     source_path: str = Field(..., description="Dockerfile 或压缩包路径")
     registry: str = Field(default="registry-vpc.miracle.ac.cn", description="镜像仓库地址")
     namespace_name: str = Field(default="auto-build", description="命名空间")
+
+
+class DownloadGSEDataConfig(BaseModel):
+    """GSE 原始数据下载配置"""
+    gse_id: str = Field(..., description="要下载的 GSE ID，例如 GSE1000")
+    target_dir: str = Field(..., description="下载保存的目标文件夹路径（绝对路径）")
+
+
+class GetGSEDownloadStatusConfig(BaseModel):
+    """GSE 原始数据下载状态查询配置"""
+    task_id: str = Field(..., description="下载任务的唯一 ID")
 
 
 @mcp.tool()
@@ -964,6 +982,212 @@ async def check_build_status(task_id: str) -> Dict[str, Any]:
     # 移除 timeout 参数
     response = requests.get(f"http://10.20.16.38:3001/build/status/{task_id}")
     return response.json()
+
+
+# ===== GSE Download Tools =====
+
+def _download_chunk(url, start, end, filename, chunk_id):
+    """单独下载文件的一个 chunk"""
+    headers = {"Range": f"bytes={start}-{end}"}
+    session = requests.Session()
+    session.trust_env = False
+    
+    # 支持最多重试 3 次
+    for _ in range(3):
+        try:
+            response = session.get(url, headers=headers, stream=True, timeout=30)
+            if response.status_code in (200, 206):
+                with open(f"{filename}.part{chunk_id}", "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                return True
+        except Exception:
+            pass
+    return False
+
+def _download_file_parallel(url, local_file, session, progress_callback=None):
+    """使用多线程并发下载文件（大文件切片）"""
+    # 获取文件大小
+    response = session.head(url)
+    if response.status_code != 200:
+        raise Exception(f"Failed to get file info (Status: {response.status_code})")
+        
+    file_size = int(response.headers.get("Content-Length", 0))
+    if file_size == 0 or file_size < 5 * 1024 * 1024:
+        # 文件太小或不支持 Content-Length，回退到单线程直接下载
+        if progress_callback:
+            progress_callback("Single-thread downloading")
+        with session.get(url, stream=True) as r:
+            r.raise_for_status()
+            with open(local_file, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=81920):
+                    f.write(chunk)
+        return
+
+    # 大文件，采用多线程分块下载
+    threads = 16
+    chunk_size = file_size // threads
+    ranges = []
+    
+    for i in range(threads):
+        start = i * chunk_size
+        if i == threads - 1:
+            end = file_size - 1
+        else:
+            end = start + chunk_size - 1
+        ranges.append((start, end))
+        
+    if progress_callback:
+        progress_callback(f"Parallel downloading (size: {file_size / 1024 / 1024:.1f} MB in {threads} threads)")
+        
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = []
+        for i, (start, end) in enumerate(ranges):
+            futures.append(executor.submit(_download_chunk, url, start, end, local_file, i))
+            
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+            
+    if not all(results):
+        raise Exception("One or more chunks failed to download properly")
+        
+    # 合并切片文件
+    if progress_callback:
+        progress_callback("Merging files")
+        
+    with open(local_file, "wb") as outfile:
+        for i in range(threads):
+            part_name = f"{local_file}.part{i}"
+            if os.path.exists(part_name):
+                with open(part_name, "rb") as infile:
+                    outfile.write(infile.read())
+                os.remove(part_name)
+
+def _download_gse_worker(task_id: str, gse_id: str, target_dir: str):
+    """后台下载 GSE 数据的 worker"""
+    try:
+        gse_id = gse_id.strip().upper()
+        if not gse_id.startswith("GSE"):
+            GSE_DOWNLOAD_TASKS[task_id] = {
+                "status": "failed",
+                "error": "GSE ID 必须以 'GSE' 开头"
+            }
+            return
+
+        # 创建目标文件夹
+        os.makedirs(target_dir, exist_ok=True)
+        GSE_DOWNLOAD_TASKS[task_id]["status"] = "connecting"
+
+        # 推导路径
+        number_part = gse_id[3:]
+        if len(number_part) <= 3:
+            folder1 = "GSEnnn"
+        else:
+            folder1 = gse_id[:-3] + "nnn"
+
+        base_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{folder1}/{gse_id}/"
+        
+        # 建立会话并禁用环境变量代理以防挂起
+        session = requests.Session()
+        session.trust_env = False
+
+        res = session.get(base_url)
+        if res.status_code != 200:
+            GSE_DOWNLOAD_TASKS[task_id] = {
+                "status": "failed",
+                "error": f"在 NCBI 服务器上找不到指定的 GSE ID: {gse_id} (Status: {res.status_code})"
+            }
+            return
+            
+        target_subdirs = ["matrix", "suppl"]
+        downloaded_files = []
+        
+        GSE_DOWNLOAD_TASKS[task_id]["status"] = "downloading"
+
+        for subdir in target_subdirs:
+            subdir_url = f"{base_url}{subdir}/"
+            res_subdir = session.get(subdir_url)
+            
+            if res_subdir.status_code == 200:
+                subdir_path = os.path.join(target_dir, subdir)
+                os.makedirs(subdir_path, exist_ok=True)
+                
+                # 解析页面中的所有文件链接
+                links = re.findall(r'href="([^"/]+)"', res_subdir.text)
+                # 过滤掉非数据文件（如父目录跳转等）
+                files = [link for link in links if not link.startswith("?") and not link.startswith("/") and "." in link]
+                
+                for filename in set(files):
+                    file_url = f"{subdir_url}{filename}"
+                    local_file = os.path.join(subdir_path, filename)
+                    
+                    def prog_callback(msg):
+                        GSE_DOWNLOAD_TASKS[task_id]["progress"] = f"{subdir}/{filename} - {msg}"
+                        
+                    # 多线程下载文件
+                    _download_file_parallel(file_url, local_file, session, progress_callback=prog_callback)
+                                
+                    downloaded_files.append(f"{subdir}/{filename}")
+
+        if not downloaded_files:
+            GSE_DOWNLOAD_TASKS[task_id] = {
+                "status": "failed",
+                "error": "未找到 matrix 或 suppl 目录下的任何文件，或者下载失败"
+            }
+        else:
+            GSE_DOWNLOAD_TASKS[task_id] = {
+                "status": "completed",
+                "message": "下载完成",
+                "files": downloaded_files,
+                "target_dir": target_dir
+            }
+
+    except Exception as e:
+        GSE_DOWNLOAD_TASKS[task_id] = {
+            "status": "failed",
+            "error": str(e)
+        }
+
+@mcp.tool(description="发起异步任务下载指定 GSE ID 的数据集（通过 NCBI HTTPS），返回任务 ID")
+async def download_gse_data(config: DownloadGSEDataConfig) -> Dict[str, Any]:
+    """发起 GSE 数据集后台下载任务"""
+    task_id = str(uuid.uuid4())
+    
+    GSE_DOWNLOAD_TASKS[task_id] = {
+        "status": "pending",
+        "gse_id": config.gse_id,
+        "target_dir": config.target_dir,
+        "progress": "Initialization"
+    }
+    
+    # 启动后台线程执行下载
+    thread = threading.Thread(
+        target=_download_gse_worker, 
+        args=(task_id, config.gse_id, config.target_dir),
+        daemon=True
+    )
+    thread.start()
+    
+    return {
+        "task_id": task_id,
+        "status": "started",
+        "message": f"正在后台下载 {config.gse_id}，请使用 get_gse_download_status 工具查询进度"
+    }
+
+@mcp.tool(description="查询 GSE 数据集下载任务的状态")
+async def get_gse_download_status(config: GetGSEDownloadStatusConfig) -> Dict[str, Any]:
+    """获取 GSE 下载任务进度"""
+    task_id = config.task_id
+    if task_id not in GSE_DOWNLOAD_TASKS:
+        return {
+            "status": "not_found",
+            "error": f"找不到对应的下载任务，task_id: {task_id}"
+        }
+        
+    return GSE_DOWNLOAD_TASKS[task_id]
+
 
 
 if __name__ == "__main__":
