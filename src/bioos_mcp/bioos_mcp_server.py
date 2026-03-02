@@ -78,9 +78,11 @@ def load_miracle_env_from_parent_proc():
             if k.startswith("MIRACLE"):
                 os.environ[k] = v
                 # Optional: print confirmation
-                print(f"Loaded {k}={v}")
+                import sys
+                print(f"Loaded {k}={v}", file=sys.stderr)
     except Exception as e:
-        print(f"Failed to load parent MIRACLE env: {e}")
+        import sys
+        print(f"Failed to load parent MIRACLE env: {e}", file=sys.stderr)
 
 
 
@@ -871,7 +873,8 @@ async def search_dockstore(config: DockstoreSearchConfig) -> Dict[str, Any]:
             )
         except RuntimeError as e:
             # 若重排失败，降级用 ES 原排序
-            print(f"[WARN] Rerank 失败，降级为 ES 排序: {e}")
+            import sys
+            print(f"[WARN] Rerank 失败，降级为 ES 排序: {e}", file=sys.stderr)
             reranked = [{"index": i, "score": h["_score"]} for i, h in enumerate(hits[:config.top_n])]
 
         # ---------- 5. 取回 top_n hits ----------
@@ -1191,9 +1194,10 @@ async def get_gse_download_status(config: GetGSEDownloadStatusConfig) -> Dict[st
 
 
 if __name__ == "__main__":
-    print("mcp running")
+    import sys
+    print("mcp running", file=sys.stderr)
     try:
         load_miracle_env_from_parent_proc()
     except Exception as e:
-        print(f"Warning: failed to load parent MIRACLE env: {e}")
+        print(f"Warning: failed to load parent MIRACLE env: {e}", file=sys.stderr)
     mcp.run()
