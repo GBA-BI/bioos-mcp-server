@@ -17,7 +17,9 @@ from mcp.server.fastmcp import FastMCP
 
 from bioos_mcp.tools.dockstore_search import DockstoreSearch
 from bioos_mcp.tools.fetch_wdl_from_dockstore import DockstoreDownloader
+from bioos_mcp.tools.workspace_profile import get_workspace_profile_data
 from bioos.resource.workflows import Submission
+from bioos.service.api import list_workflows,list_submissions
 from bioos_mcp.tools.compose_tools import build_inputs
 from bioos import bioos
 import asyncio, functools
@@ -189,6 +191,68 @@ class BioosDeleteSubmissionConfig(BaseModel):
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+class ListSubmissionConfig(BaseModel):
+    """Bio-OS submissions 列表查询配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    workflow_name: Optional[str] = Field(default=None, description="工作流名称（可选，用于筛选 submissions）")
+    search_keyword: Optional[str] = Field(default=None, description="关键字（可选）")
+    status: Optional[str] = Field(default=None, description="状态（可选）")
+    page_number: int = Field(default=1, ge=1, description="页码（从 1 开始）")
+    page_size: int = Field(default=10, ge=1, description="每页数量")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class ListWorkflowConfig(BaseModel):
+    """Bio-OS workflows 列表查询配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    search_keyword: Optional[str] = Field(default=None, description="关键字（可选）")
+    page_number: int = Field(default=1, ge=1, description="页码（从 1 开始）")
+    page_size: int = Field(default=10, ge=1, description="每页数量")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+class ListFilesConfig(BaseModel):
+    """列出工作空间文件配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    prefix: str = Field(default="", description="目录前缀路径（可选），用于指定要列出的目录")
+    recursive: bool = Field(default=False, description="是否递归列出所有文件")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class DownloadFilesConfig(BaseModel):
+    """下载工作空间文件配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    sources: Union[str, List[str]] = Field(..., description="要下载的文件路径（单个字符串或字符串列表）")
+    target: str = Field(..., description="本地保存路径（目录或文件路径）")
+    flatten: bool = Field(default=False, description="是否扁平化目录结构")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class GetWorkspaceProfileConfig(BaseModel):
+    """工作空间摘要查询配置"""
+    workspace_name: str = Field(..., description="目标工作空间名称")
+    submission_limit: int = Field(default=5, ge=1, le=50, description="返回最近 submission 数量")
+    artifact_limit_per_submission: int = Field(
+        default=10, ge=1, le=50, description="每个 submission 返回的代表性文件数量"
+    )
+    sample_rows_per_data_model: int = Field(
+        default=3, ge=0, le=20, description="每个 data model 返回的示例行数"
+    )
+    include_artifacts: bool = Field(default=True, description="是否汇总 submission 产物概览")
+    include_failure_details: bool = Field(default=True, description="是否补充失败原因摘要")
+    include_ies: bool = Field(default=True, description="是否包含 IES 概览")
+    include_signed_urls: bool = Field(default=False, description="artifact 中是否返回签名 URL")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
 
 
 class ListWorkspaceConfig(BaseModel):
@@ -397,6 +461,14 @@ async def list_workspace(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
         {"Name": str(row.Name), "Description": str(row.Description) if row.Description is not None else ""}
         for row in df.itertuples(index=False)
     ]
+
+
+@mcp.tool(description="获取指定工作空间的全貌摘要，用于大模型理解 workspace profile")
+async def get_workspace_profile(cfg: GetWorkspaceProfileConfig) -> Dict[str, Any]:
+    try:
+        return get_workspace_profile_data(cfg)
+    except Exception as e:
+        return {"error": str(e)}
 
 @mcp.tool()
 async def import_workflow(config: WorkflowImportConfig) -> str:
@@ -627,6 +699,112 @@ async def delete_submission(cfg: BioosDeleteSubmissionConfig) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
+@mcp.tool(description="列出指定工作空间的 submissions")
+async def list_submission(cfg: ListSubmissionConfig) -> List[Dict[str, Any]]:
+    ak, sk = get_credentials(cfg.ak, cfg.sk)
+    bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+    workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+
+    items = list_submissions(
+        workspace_id=workspace_id,
+        workflow_name=cfg.workflow_name,
+        search_keyword=cfg.search_keyword,
+        status=cfg.status,
+        page_number=cfg.page_number,
+        page_size=cfg.page_size,
+    )
+    return items or []
+
+
+@mcp.tool(description="列出指定工作空间的 workflows")
+async def list_workflow(cfg: ListWorkflowConfig) -> List[Dict[str, Any]]:
+    """列出 Bio-OS 工作空间中的 workflows
+    
+    说明：
+    - 列出指定工作空间中的所有工作流
+    - 支持使用 search_keyword 进行关键字搜索
+    - 支持分页查询
+    - 返回工作流列表，包含 ID、Name、Description 等信息
+    """
+    ak, sk = get_credentials(cfg.ak, cfg.sk)
+    bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+    workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+
+    items = list_workflows(
+        search_keyword=cfg.search_keyword,
+        page_number=cfg.page_number,
+        page_size=cfg.page_size,
+        workspace_id=workspace_id,
+    )
+    return items or []
+
+
+
+@mcp.tool(description="列出指定工作空间的文件列表，支持指定目录前缀和递归列出")
+async def list_files(cfg: ListFilesConfig) -> List[Dict[str, Any]]:
+
+    ak, sk = get_credentials(cfg.ak, cfg.sk)
+    bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+    workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+    ws = bioos.workspace(workspace_id)
+    
+    try:
+        files_df = ws.files.list(prefix=cfg.prefix, recursive=cfg.recursive)
+        
+        if hasattr(files_df, "empty") and getattr(files_df, "empty"):
+            return []
+        
+        if hasattr(files_df, "to_dict"):
+            records = files_df.to_dict(orient="records")
+            return records
+        
+        return []
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+@mcp.tool(description="从指定工作空间下载文件到本地，支持单个或多个文件下载")
+async def download_files(cfg: DownloadFilesConfig) -> Dict[str, Any]:
+    """从 Bio-OS 工作空间下载文件到本地路径
+    
+    说明：
+    - 支持下载单个文件或批量下载多个文件
+    - 使用 `flatten` 参数控制是否扁平化目录结构
+    - 返回下载结果，包括成功状态、下载的文件列表等信息
+    """
+    ak, sk = get_credentials(cfg.ak, cfg.sk)
+    bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+    workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+    ws = bioos.workspace(workspace_id)
+    
+    try:
+        target_path = Path(cfg.target)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        result = ws.files.download(
+            sources=cfg.sources,
+            target=cfg.target,
+            flatten=cfg.flatten
+        )
+        
+        sources_list = [cfg.sources] if isinstance(cfg.sources, str) else cfg.sources
+        
+        return {
+            "success": result,
+            "workspace_id": workspace_id,
+            "sources": sources_list,
+            "target": str(cfg.target),
+            "flatten": cfg.flatten,
+            "message": "文件下载成功" if result else "文件下载失败"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "workspace_id": workspace_id if 'workspace_id' in locals() else None,
+            "sources": cfg.sources if isinstance(cfg.sources, str) else list(cfg.sources),
+            "target": str(cfg.target)
+        }
 
 @mcp.tool(description="Bio-OS 创建新工作空间")
 async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
