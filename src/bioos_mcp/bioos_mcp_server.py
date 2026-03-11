@@ -429,7 +429,7 @@ async def validate_wdl(config: WDLValidateConfig) -> str:
 
 
 @mcp.tool(description="列出当前登录环境的工作空间名称与描述")
-async def list_workspace(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
+async def list_bioos_workspaces(config: ListWorkspaceConfig) -> List[Dict[str, str]]:
     """列出 Bio-OS 工作空间，仅返回 Name 与 Description 字段。
 
     说明：
@@ -700,7 +700,7 @@ async def delete_submission(cfg: BioosDeleteSubmissionConfig) -> Dict[str, Any]:
         return {"error": str(e)}
 
 @mcp.tool(description="列出指定工作空间的 submissions")
-async def list_submission(cfg: ListSubmissionConfig) -> List[Dict[str, Any]]:
+async def list_submissions_from_workspace(cfg: ListSubmissionConfig) -> List[Dict[str, Any]]:
     ak, sk = get_credentials(cfg.ak, cfg.sk)
     bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
     workspace_id = get_workspace_id_by_name(cfg.workspace_name)
@@ -717,7 +717,7 @@ async def list_submission(cfg: ListSubmissionConfig) -> List[Dict[str, Any]]:
 
 
 @mcp.tool(description="列出指定工作空间的 workflows")
-async def list_workflow(cfg: ListWorkflowConfig) -> List[Dict[str, Any]]:
+async def list_workflows_from_workspace(cfg: ListWorkflowConfig) -> List[Dict[str, Any]]:
     """列出 Bio-OS 工作空间中的 workflows
     
     说明：
@@ -741,7 +741,7 @@ async def list_workflow(cfg: ListWorkflowConfig) -> List[Dict[str, Any]]:
 
 
 @mcp.tool(description="列出指定工作空间的文件列表，支持指定目录前缀和递归列出")
-async def list_files(cfg: ListFilesConfig) -> List[Dict[str, Any]]:
+async def list_files_from_workspace(cfg: ListFilesConfig) -> List[Dict[str, Any]]:
 
     ak, sk = get_credentials(cfg.ak, cfg.sk)
     bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
@@ -764,7 +764,7 @@ async def list_files(cfg: ListFilesConfig) -> List[Dict[str, Any]]:
 
 
 @mcp.tool(description="从指定工作空间下载文件到本地，支持单个或多个文件下载")
-async def download_files(cfg: DownloadFilesConfig) -> Dict[str, Any]:
+async def download_files_from_workspace(cfg: DownloadFilesConfig) -> Dict[str, Any]:
     """从 Bio-OS 工作空间下载文件到本地路径
     
     说明：
