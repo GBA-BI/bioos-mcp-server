@@ -3,6 +3,14 @@
 这个模块实现了一个 MCP 服务器，提供了 Bio-OS 工作流管理和 Docker 镜像构建的功能。
 """
 
+
+import sys
+import builtins
+def _mcp_print(*args, **kwargs):
+    kwargs['file'] = sys.stderr
+    builtins.print(*args, **kwargs)
+print = _mcp_print
+
 from bioos_mcp.tools.rerank_client import RerankClient
 import json
 import os

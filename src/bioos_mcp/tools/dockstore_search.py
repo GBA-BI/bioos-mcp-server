@@ -63,6 +63,14 @@ Usage Examples:
     python dockstore_search.py -q "legacy" "description" "AND" --include-archived
 """
 
+
+import sys
+import builtins
+def _mcp_print(*args, **kwargs):
+    kwargs['file'] = sys.stderr
+    builtins.print(*args, **kwargs)
+print = _mcp_print
+
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 from uuid import uuid4

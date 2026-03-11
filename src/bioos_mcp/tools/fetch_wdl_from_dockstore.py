@@ -15,6 +15,14 @@ Examples:
     python fetch_wdl_from_dockstore.py https://dockstore.miracle.ac.cn/workflows/git.miracle.ac.cn/gzlab/mrnaseq/mRNAseq ./workflows
 """
 
+
+import sys
+import builtins
+def _mcp_print(*args, **kwargs):
+    kwargs['file'] = sys.stderr
+    builtins.print(*args, **kwargs)
+print = _mcp_print
+
 import os
 import sys
 import json
