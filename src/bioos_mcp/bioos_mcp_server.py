@@ -29,6 +29,7 @@ from bioos_mcp.tools.workspace_profile import get_workspace_profile_data
 from bioos.resource.workflows import Submission
 from bioos.service.api import list_workflows,list_submissions
 from bioos_mcp.tools.compose_tools import build_inputs
+from bioos.ops.workspace_files import upload_local_files_to_workspace
 from bioos import bioos
 import asyncio, functools
 
@@ -239,6 +240,93 @@ class DownloadFilesConfig(BaseModel):
     sources: Union[str, List[str]] = Field(..., description="要下载的文件路径（单个字符串或字符串列表）")
     target: str = Field(..., description="本地保存路径（目录或文件路径）")
     flatten: bool = Field(default=False, description="是否扁平化目录结构")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class UploadFilesConfig(BaseModel):
+    """上传本地文件到工作空间配置"""
+    workspace_name: str = Field(..., description="目标工作空间名称")
+    sources: Union[str, List[str]] = Field(..., description="一个或多个本地文件路径")
+    target: str = Field(default="", description="工作空间 bucket 内的目标前缀")
+    flatten: bool = Field(default=True, description="是否扁平化本地路径结构")
+    skip_existing: bool = Field(default=False, description="目标对象已存在时是否跳过上传")
+    checkpoint_dir: Optional[str] = Field(default=None, description="断点续传 checkpoint 目录")
+    max_retries: int = Field(default=3, ge=0, description="单个文件失败后的最大重试次数")
+    task_num: int = Field(default=10, ge=1, description="multipart 上传并发任务数")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class ListWorkspaceMembersConfig(BaseModel):
+    """工作空间成员列表查询配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    page_number: Optional[int] = Field(default=None, ge=1, description="分页页码")
+    page_size: Optional[int] = Field(default=None, ge=1, description="分页大小")
+    in_workspace: bool = Field(default=True, description="是否仅返回已在工作空间内的成员")
+    roles: Optional[List[str]] = Field(default=None, description="可选角色过滤列表")
+    keyword: Optional[str] = Field(default=None, description="可选用户名关键词过滤")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class AddWorkspaceMembersConfig(BaseModel):
+    """添加工作空间成员配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    names: List[str] = Field(..., min_length=1, description="要添加的成员用户名列表")
+    role: str = Field(..., description="成员角色：Visitor、User 或 Admin")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class UpdateWorkspaceMembersConfig(BaseModel):
+    """更新工作空间成员配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    names: List[str] = Field(..., min_length=1, description="要更新的成员用户名列表")
+    role: str = Field(..., description="更新后的成员角色：Visitor、User 或 Admin")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class DeleteWorkspaceMembersConfig(BaseModel):
+    """删除工作空间成员配置"""
+    workspace_name: str = Field(..., description="工作空间名称")
+    names: List[str] = Field(..., min_length=1, description="要删除的成员用户名列表")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class AssetUsageConfig(BaseModel):
+    """账号级资产用量查询配置"""
+    start_time: int = Field(..., description="整点开始时间戳")
+    end_time: int = Field(..., description="整点结束时间戳")
+    type: str = Field(..., description="资产类型：WorkspaceVisit 或 WorkflowUse")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class ResourceUsageDataConfig(BaseModel):
+    """账号级资源时序用量查询配置"""
+    start_time: int = Field(..., description="整点开始时间戳")
+    end_time: int = Field(..., description="整点结束时间戳")
+    type: str = Field(..., description="资源类型：cpu、memory、storage、tos 或 gpu")
+    sub_dimensions: Optional[List[str]] = Field(default=None, description="可选子维度列表")
+    ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
+    sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
+    endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
+
+
+class ResourceUsageListConfig(BaseModel):
+    """账号级资源列表/总量查询配置"""
+    start_time: int = Field(..., description="整点开始时间戳")
+    end_time: int = Field(..., description="整点结束时间戳")
     ak: Optional[str] = Field(default=None, description="Bio-OS 访问密钥，为空时从环境变量获取")
     sk: Optional[str] = Field(default=None, description="Bio-OS 私钥，为空时从环境变量获取")
     endpoint: str = Field(default=DEFAULT_ENDPOINT, description="Bio-OS 实例平台端点")
@@ -814,6 +902,32 @@ async def download_files_from_workspace(cfg: DownloadFilesConfig) -> Dict[str, A
             "target": str(cfg.target)
         }
 
+
+@mcp.tool(description="上传一个或多个本地文件到指定工作空间，支持重试、断点续传和跳过已存在文件")
+async def upload_files_to_workspace(cfg: UploadFilesConfig) -> Dict[str, Any]:
+    try:
+        result = upload_local_files_to_workspace(
+            workspace_name=cfg.workspace_name,
+            sources=cfg.sources,
+            target=cfg.target,
+            flatten=cfg.flatten,
+            skip_existing=cfg.skip_existing,
+            checkpoint_dir=cfg.checkpoint_dir,
+            max_retries=cfg.max_retries,
+            task_num=cfg.task_num,
+            access_key=cfg.ak,
+            secret_key=cfg.sk,
+            endpoint=cfg.endpoint,
+        )
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "workspace_name": cfg.workspace_name,
+            "sources": cfg.sources if isinstance(cfg.sources, str) else list(cfg.sources),
+            "error": str(e),
+        }
+
 @mcp.tool(description="Bio-OS 创建新工作空间")
 async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
     try:
@@ -844,6 +958,90 @@ async def create_workspace_bioos(cfg: BioosWorkspaceConfig) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+@mcp.tool(description="列出指定工作空间的成员信息，默认只返回已在工作空间内的成员")
+async def list_workspace_members(cfg: ListWorkspaceMembersConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.workspace(workspace_id)
+        members = ws.list_members(
+            page_number=cfg.page_number,
+            page_size=cfg.page_size,
+            in_workspace=cfg.in_workspace,
+            roles=cfg.roles,
+            keyword=cfg.keyword,
+        )
+        return {
+            "success": True,
+            "workspace_name": cfg.workspace_name,
+            "workspace_id": workspace_id,
+            "in_workspace": cfg.in_workspace,
+            "members": members,
+        }
+    except Exception as e:
+        return {"success": False, "workspace_name": cfg.workspace_name, "error": str(e)}
+
+
+@mcp.tool(description="向指定工作空间添加成员")
+async def add_workspace_members(cfg: AddWorkspaceMembersConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.workspace(workspace_id)
+        result = ws.add_members(names=cfg.names, role=cfg.role)
+        return {
+            "success": True,
+            "workspace_name": cfg.workspace_name,
+            "workspace_id": workspace_id,
+            "names": cfg.names,
+            "role": cfg.role,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "workspace_name": cfg.workspace_name, "error": str(e)}
+
+
+@mcp.tool(description="更新指定工作空间成员的角色")
+async def update_workspace_members(cfg: UpdateWorkspaceMembersConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.workspace(workspace_id)
+        result = ws.update_members(names=cfg.names, role=cfg.role)
+        return {
+            "success": True,
+            "workspace_name": cfg.workspace_name,
+            "workspace_id": workspace_id,
+            "names": cfg.names,
+            "role": cfg.role,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "workspace_name": cfg.workspace_name, "error": str(e)}
+
+
+@mcp.tool(description="从指定工作空间删除成员")
+async def delete_workspace_members(cfg: DeleteWorkspaceMembersConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        workspace_id = get_workspace_id_by_name(cfg.workspace_name)
+        ws = bioos.workspace(workspace_id)
+        result = ws.delete_members(names=cfg.names)
+        return {
+            "success": True,
+            "workspace_name": cfg.workspace_name,
+            "workspace_id": workspace_id,
+            "names": cfg.names,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "workspace_name": cfg.workspace_name, "error": str(e)}
 
 
 @mcp.tool(description="Bio-OS 导出工作空间元信息")
@@ -985,6 +1183,128 @@ async def upload_dashboard_file(cfg: BioosS3FileUploader) -> Dict[str, Any]:
 
     except Exception as e:
         return {"error": str(e)}
+
+
+@mcp.tool(description="获取账号级资产用量时序数据")
+async def get_asset_usage_data(cfg: AssetUsageConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().get_asset_usage_data(cfg.start_time, cfg.end_time, cfg.type)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "type": cfg.type,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "type": cfg.type, "error": str(e)}
+
+
+@mcp.tool(description="列出账号级资产用量记录")
+async def list_asset_usage(cfg: AssetUsageConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().list_asset_usage(cfg.start_time, cfg.end_time, cfg.type)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "type": cfg.type,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "type": cfg.type, "error": str(e)}
+
+
+@mcp.tool(description="获取账号级资产用量总量")
+async def get_total_asset_usage(cfg: AssetUsageConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().get_total_asset_usage(cfg.start_time, cfg.end_time, cfg.type)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "type": cfg.type,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "type": cfg.type, "error": str(e)}
+
+
+@mcp.tool(description="获取账号级资源用量时序数据")
+async def get_resource_usage_data(cfg: ResourceUsageDataConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().get_resource_usage_data(
+            cfg.start_time,
+            cfg.end_time,
+            cfg.type,
+            sub_dimensions=cfg.sub_dimensions,
+        )
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "type": cfg.type,
+            "sub_dimensions": cfg.sub_dimensions,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "type": cfg.type, "error": str(e)}
+
+
+@mcp.tool(description="列出账号级按工作空间维度聚合的资源用量")
+async def list_workspace_resource_usage(cfg: ResourceUsageListConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().list_workspace_resource_usage(cfg.start_time, cfg.end_time)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool(description="列出账号级按用户维度聚合的资源用量")
+async def list_user_resource_usage(cfg: ResourceUsageListConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().list_user_resource_usage(cfg.start_time, cfg.end_time)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool(description="获取账号级资源用量总量")
+async def get_total_resource_usage(cfg: ResourceUsageListConfig) -> Dict[str, Any]:
+    try:
+        ak, sk = get_credentials(cfg.ak, cfg.sk)
+        bioos.login(endpoint=cfg.endpoint, access_key=ak, secret_key=sk)
+        result = bioos.usage().get_total_resource_usage(cfg.start_time, cfg.end_time)
+        return {
+            "success": True,
+            "start_time": cfg.start_time,
+            "end_time": cfg.end_time,
+            "result": result,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ===== Dockstore Tools =====
